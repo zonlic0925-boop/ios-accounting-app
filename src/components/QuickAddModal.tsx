@@ -8,8 +8,11 @@ import {
   Layers,
   ArrowRightLeft,
   ChevronDown,
+  Heart,
+  User,
+  Users,
 } from "lucide-react";
-import type { Account, Category } from "../db";
+import type { Account, Category, LedgerId, PayerType, SplitRule } from "../db";
 import { IOSKeypad } from "./IOSKeypad";
 import { CategoryIcon } from "./CategoryIcon";
 import { convertAmount, formatCurrencyWithCode, getAllCurrencies } from "../services/currency";
@@ -22,6 +25,7 @@ interface QuickAddModalProps {
   accounts: Account[];
   baseCurrency: string;
   rates: Record<string, number>;
+  currentLedger?: LedgerId;
   onAddTransaction: (transaction: {
     title: string;
     type: "expense" | "income";
@@ -33,6 +37,9 @@ interface QuickAddModalProps {
     accountId: string;
     date: string;
     note?: string;
+    ledgerId?: LedgerId;
+    payer?: PayerType;
+    splitRule?: SplitRule;
   }) => Promise<void>;
   initialType?: "expense" | "income";
 }
@@ -44,10 +51,14 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   accounts,
   baseCurrency,
   rates,
+  currentLedger = "personal",
   onAddTransaction,
   initialType = "expense",
 }) => {
   const [type, setType] = useState<"expense" | "income">(initialType);
+  const [targetLedger, setTargetLedger] = useState<LedgerId>(currentLedger);
+  const [payer, setPayer] = useState<PayerType>("me");
+  const [splitRule, setSplitRule] = useState<SplitRule>("50_50");
   const [expression, setExpression] = useState<string>("0");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
@@ -64,6 +75,9 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setType(initialType);
+      setTargetLedger(currentLedger);
+      setPayer("me");
+      setSplitRule("50_50");
       setExpression("0");
       setNote("");
       setDate(new Date().toISOString().split("T")[0]);
@@ -79,7 +93,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
         setSelectedCurrency(defaultAcc.currency || baseCurrency);
       }
     }
-  }, [isOpen, initialType, categories, accounts, baseCurrency]);
+  }, [isOpen, initialType, categories, accounts, baseCurrency, currentLedger]);
 
   // When type changes, select first category of that type
   const handleTypeChange = (newType: "expense" | "income") => {
@@ -148,6 +162,9 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
       accountId: selectedAccountId,
       date,
       note: note.trim() || undefined,
+      ledgerId: targetLedger,
+      payer: targetLedger === "shared" ? payer : undefined,
+      splitRule: targetLedger === "shared" ? splitRule : undefined,
     });
 
     onClose();
@@ -179,42 +196,172 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
               <div className="w-10 h-1 rounded-full bg-ios-gray-3 dark:bg-ios-gray-dark3" />
             </div>
 
-            {/* Header / Type Segmented Control */}
-            <div className="px-5 pt-2 pb-3 flex items-center justify-between border-b border-black/[0.05] dark:border-white/[0.05]">
-              {/* Segmented Switcher */}
-              <div className="flex bg-ios-gray-5 dark:bg-ios-gray-dark4 p-1 rounded-xl shadow-inner-ios">
+            {/* Header / Type Segmented Control & Ledger Switcher */}
+            <div className="px-5 pt-2 pb-3 border-b border-black/[0.05] dark:border-white/[0.05] space-y-2.5">
+              <div className="flex items-center justify-between">
+                {/* Segmented Switcher */}
+                <div className="flex bg-ios-gray-5 dark:bg-ios-gray-dark4 p-1 rounded-xl shadow-inner-ios">
+                  <button
+                    type="button"
+                    onClick={() => handleTypeChange("expense")}
+                    className={`px-5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                      type === "expense"
+                        ? "bg-white dark:bg-ios-gray-dark2 text-red-500 shadow-sm"
+                        : "text-ios-gray-1 dark:text-ios-gray-2 hover:text-black dark:hover:text-white"
+                    }`}
+                  >
+                    支出
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTypeChange("income")}
+                    className={`px-5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                      type === "income"
+                        ? "bg-white dark:bg-ios-gray-dark2 text-emerald-500 shadow-sm"
+                        : "text-ios-gray-1 dark:text-ios-gray-2 hover:text-black dark:hover:text-white"
+                    }`}
+                  >
+                    收入
+                  </button>
+                </div>
+
+                {/* Ledger Switcher Pills */}
+                <div className="flex items-center bg-ios-gray-5 dark:bg-ios-gray-dark4 p-1 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetLedger("personal");
+                      haptics.selection();
+                    }}
+                    className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                      targetLedger === "personal"
+                        ? "bg-white dark:bg-ios-gray-dark2 text-ios-blue shadow-sm font-semibold"
+                        : "text-ios-gray-1 dark:text-ios-gray-2"
+                    }`}
+                  >
+                    <User className="w-3 h-3" />
+                    <span>个人</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetLedger("shared");
+                      haptics.selection();
+                    }}
+                    className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                      targetLedger === "shared"
+                        ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-sm font-semibold"
+                        : "text-ios-gray-1 dark:text-ios-gray-2"
+                    }`}
+                  >
+                    <Heart className="w-3 h-3 fill-current" />
+                    <span>共享</span>
+                  </button>
+                </div>
+
+                {/* Close Button */}
                 <button
                   type="button"
-                  onClick={() => handleTypeChange("expense")}
-                  className={`px-5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-                    type === "expense"
-                      ? "bg-white dark:bg-ios-gray-dark2 text-red-500 shadow-sm"
-                      : "text-ios-gray-1 dark:text-ios-gray-2 hover:text-black dark:hover:text-white"
-                  }`}
+                  onClick={onClose}
+                  className="w-8 h-8 rounded-full bg-ios-gray-5 dark:bg-ios-gray-dark4 flex items-center justify-center text-ios-gray-1 hover:text-black dark:hover:text-white transition-colors cursor-pointer"
                 >
-                  支出
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleTypeChange("income")}
-                  className={`px-5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-                    type === "income"
-                      ? "bg-white dark:bg-ios-gray-dark2 text-emerald-500 shadow-sm"
-                      : "text-ios-gray-1 dark:text-ios-gray-2 hover:text-black dark:hover:text-white"
-                  }`}
-                >
-                  收入
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* Close Button */}
-              <button
-                type="button"
-                onClick={onClose}
-                className="w-8 h-8 rounded-full bg-ios-gray-5 dark:bg-ios-gray-dark4 flex items-center justify-center text-ios-gray-1 dark:text-ios-gray-2 hover:bg-ios-gray-4 dark:hover:bg-ios-gray-dark3 transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              {/* Shared Ledger Extra Controls (Payer & Split rule) */}
+              {targetLedger === "shared" && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="p-2.5 rounded-2xl bg-rose-500/10 dark:bg-rose-500/15 border border-rose-500/20 space-y-2"
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
+                      <Users className="w-3.5 h-3.5" /> 谁垫付了:
+                    </span>
+                    <div className="flex items-center space-x-1 bg-white/80 dark:bg-ios-gray-dark3 p-0.5 rounded-lg border border-rose-500/15">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPayer("me");
+                          haptics.selection();
+                        }}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                          payer === "me"
+                            ? "bg-rose-500 text-white shadow-xs"
+                            : "text-ios-gray-1 hover:text-black dark:hover:text-white"
+                        }`}
+                      >
+                        我付的 🙋‍♂️
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPayer("partner");
+                          haptics.selection();
+                        }}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                          payer === "partner"
+                            ? "bg-rose-500 text-white shadow-xs"
+                            : "text-ios-gray-1 hover:text-black dark:hover:text-white"
+                        }`}
+                      >
+                        对方付的 🙋‍♀️
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs pt-1 border-t border-rose-500/15">
+                    <span className="text-rose-600 dark:text-rose-400 font-semibold">分摊方式:</span>
+                    <div className="flex items-center space-x-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSplitRule("50_50");
+                          haptics.selection();
+                        }}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-medium transition-all cursor-pointer ${
+                          splitRule === "50_50"
+                            ? "bg-rose-500 text-white font-bold"
+                            : "bg-white/60 dark:bg-ios-gray-dark3 text-ios-gray-1"
+                        }`}
+                      >
+                        AA平摊 (50%)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSplitRule("100_me");
+                          haptics.selection();
+                        }}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-medium transition-all cursor-pointer ${
+                          splitRule === "100_me"
+                            ? "bg-rose-500 text-white font-bold"
+                            : "bg-white/60 dark:bg-ios-gray-dark3 text-ios-gray-1"
+                        }`}
+                      >
+                        我全包 (100%)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSplitRule("100_partner");
+                          haptics.selection();
+                        }}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-medium transition-all cursor-pointer ${
+                          splitRule === "100_partner"
+                            ? "bg-rose-500 text-white font-bold"
+                            : "bg-white/60 dark:bg-ios-gray-dark3 text-ios-gray-1"
+                        }`}
+                      >
+                        对方全包 (100%)
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
             </div>
 
             {/* Amount Display & Currency Conversion */}

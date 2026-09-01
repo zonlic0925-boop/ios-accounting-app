@@ -10,8 +10,15 @@ import {
   VolumeX,
   ChevronRight,
   Check,
+  Heart,
+  Users,
+  Copy,
+  ArrowRightLeft,
+  CheckCircle2,
+  LogOut,
 } from "lucide-react";
 import { getAllCurrencies } from "../services/currency";
+import { syncService } from "../services/syncService";
 import { haptics } from "../lib/haptics";
 
 interface SettingsViewProps {
@@ -47,6 +54,82 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [exportSuccess, setExportSuccess] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
+  // Cloud Sync & Couple Room States
+  const [roomId, setRoomId] = useState<string | null>(syncService.getRoomId());
+  const [inputCode, setInputCode] = useState("");
+  const [isPairing, setIsPairing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatusMsg, setSyncStatusMsg] = useState("");
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  const handleCreateRoom = async () => {
+    haptics.light();
+    setIsPairing(true);
+    try {
+      const res = await syncService.createRoom();
+      if (res.success && res.roomId) {
+        setRoomId(res.roomId);
+        haptics.success();
+        setSyncStatusMsg("配对码已生成");
+      }
+    } finally {
+      setIsPairing(false);
+    }
+  };
+
+  const handleJoinRoom = async () => {
+    if (!inputCode.trim()) return;
+    haptics.light();
+    setIsPairing(true);
+    try {
+      const res = await syncService.joinRoom(inputCode);
+      if (res.success) {
+        setRoomId(inputCode.trim().toUpperCase());
+        setInputCode("");
+        haptics.success();
+        setSyncStatusMsg("已加入共享账本");
+      } else {
+        haptics.error();
+        setSyncStatusMsg(res.message);
+      }
+    } finally {
+      setIsPairing(false);
+    }
+  };
+
+  const handleManualSync = async () => {
+    haptics.selection();
+    setIsSyncing(true);
+    try {
+      const res = await syncService.syncNow();
+      if (res.success) {
+        haptics.success();
+        setSyncStatusMsg(`同步完成 (更新 ${res.syncedCount || 0} 笔)`);
+        setTimeout(() => setSyncStatusMsg(""), 4000);
+      } else {
+        haptics.error();
+        setSyncStatusMsg(res.message || "同步失败");
+      }
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleLeaveRoom = () => {
+    haptics.medium();
+    syncService.leaveRoom();
+    setRoomId(null);
+    setSyncStatusMsg("已退出共享账本");
+  };
+
+  const handleCopyCode = () => {
+    if (!roomId) return;
+    navigator.clipboard.writeText(roomId);
+    haptics.selection();
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
   const handleRefresh = async () => {
     haptics.selection();
     setIsRefreshing(true);
@@ -78,6 +161,129 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <p className="text-xs text-ios-gray-1 mt-0.5">
           偏好设置、多币种折算基准与数据备份管理
         </p>
+      </div>
+
+      {/* Group 0: Couple Shared Ledger & Cloud Sync */}
+      <div className="space-y-2">
+        <span className="text-xs font-bold text-ios-pink uppercase tracking-wider px-2 flex items-center space-x-1">
+          <Heart className="w-3 h-3 fill-ios-pink" />
+          <span>恋爱双人共享记账 (Cloud Sync)</span>
+        </span>
+
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl overflow-hidden shadow-ios-card border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.04] dark:divide-white/[0.04]">
+          {roomId ? (
+            /* Paired State */
+            <div className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-9 h-9 rounded-2xl bg-ios-pink/10 text-ios-pink flex items-center justify-center">
+                    <Heart className="w-4 h-4 fill-ios-pink" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-black dark:text-white flex items-center space-x-1.5">
+                      <span>情侣空间已连接</span>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-ios-green" />
+                    </div>
+                    <p className="text-xs text-ios-gray-1 mt-0.5">
+                      房间配对码: <span className="font-mono font-bold text-ios-pink">{roomId}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCopyCode}
+                  className="p-2 rounded-xl bg-ios-gray-5 dark:bg-ios-gray-dark4 text-ios-gray-1 hover:text-black dark:hover:text-white transition-all cursor-pointer"
+                  title="复制配对码"
+                >
+                  {copiedCode ? <Check className="w-4 h-4 text-ios-green" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+
+              {syncStatusMsg && (
+                <div className="text-xs text-ios-green dark:text-ios-green bg-ios-green/10 px-3 py-1.5 rounded-xl text-center">
+                  {syncStatusMsg}
+                </div>
+              )}
+
+              <div className="flex space-x-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleManualSync}
+                  disabled={isSyncing}
+                  className="flex-1 py-2.5 rounded-2xl bg-ios-pink text-white text-xs font-semibold flex items-center justify-center space-x-1.5 shadow-sm hover:opacity-90 active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <ArrowRightLeft className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
+                  <span>{isSyncing ? "正在云同步..." : "立即云对齐"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleLeaveRoom}
+                  className="px-3.5 py-2.5 rounded-2xl bg-ios-gray-5 dark:bg-ios-gray-dark4 text-ios-red text-xs font-semibold flex items-center justify-center space-x-1 hover:bg-ios-red/10 transition-all cursor-pointer"
+                  title="断开配对"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>退出</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Unpaired State */
+            <div className="p-4 space-y-3.5">
+              <div className="flex items-start space-x-3">
+                <div className="w-9 h-9 rounded-2xl bg-ios-pink/10 text-ios-pink flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <Users className="w-4 h-4" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-semibold text-black dark:text-white">
+                    与另一半开启共享记账
+                  </div>
+                  <p className="text-xs text-ios-gray-1 mt-0.5 leading-relaxed">
+                    个人账本与共享账本独立隔离。一方创建配对码，另一方输入即可双向实时同步与轧差结算。
+                  </p>
+                </div>
+              </div>
+
+              {syncStatusMsg && (
+                <div className="text-xs text-ios-red bg-ios-red/10 px-3 py-1.5 rounded-xl text-center">
+                  {syncStatusMsg}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleCreateRoom}
+                  disabled={isPairing}
+                  className="py-2.5 rounded-2xl bg-ios-pink text-white text-xs font-semibold flex items-center justify-center space-x-1.5 shadow-sm hover:opacity-90 active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <Heart className="w-3.5 h-3.5 fill-white" />
+                  <span>{isPairing ? "生成中..." : "新建情侣账本"}</span>
+                </button>
+
+                <div className="flex space-x-1">
+                  <input
+                    type="text"
+                    value={inputCode}
+                    onChange={(e) => setInputCode(e.target.value.toUpperCase())}
+                    placeholder="输入6位配对码"
+                    maxLength={6}
+                    className="flex-1 min-w-0 px-2.5 py-1.5 text-xs text-center uppercase tracking-widest font-mono bg-ios-gray-6 dark:bg-ios-gray-dark4 rounded-2xl border border-black/[0.04] dark:border-white/[0.06] text-black dark:text-white focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleJoinRoom}
+                    disabled={isPairing || !inputCode.trim()}
+                    className="px-3 py-1.5 rounded-2xl bg-ios-gray-5 dark:bg-ios-gray-dark3 text-ios-blue text-xs font-semibold hover:bg-ios-blue hover:text-white transition-all cursor-pointer disabled:opacity-40"
+                  >
+                    加入
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Group 1: Currency & Multi-Currency System */}

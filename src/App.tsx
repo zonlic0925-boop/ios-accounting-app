@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Receipt,
@@ -9,8 +9,11 @@ import {
   Sun,
   Moon,
   Laptop,
+  User,
+  Heart,
 } from "lucide-react";
 import { useFinance } from "./hooks/useFinance";
+import type { LedgerId } from "./db";
 import { TransactionsView } from "./components/TransactionsView";
 import { AnalyticsView } from "./components/AnalyticsView";
 import { AccountsView } from "./components/AccountsView";
@@ -34,14 +37,23 @@ export function App() {
     },
     currency: { baseCurrency, rates, loading: currLoading, changeBaseCurrency, refreshRates },
     settings: { theme, setTheme, soundEnabled, toggleSound, exportCSV, importCSV, resetData },
+    shared: sharedLedger,
     refreshAll,
   } = useFinance();
 
   const loading = txLoading || accLoading || currLoading;
 
   const [activeTab, setActiveTab] = useState<TabType>("transactions");
+  const [activeLedger, setActiveLedger] = useState<LedgerId>("personal");
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [quickAddType, setQuickAddType] = useState<"expense" | "income">("expense");
+
+  // Filter transactions by active ledger (personal vs shared)
+  const currentLedgerTransactions = useMemo(() => {
+    return transactions.filter(
+      (tx) => (tx.ledgerId || "personal") === activeLedger
+    );
+  }, [transactions, activeLedger]);
 
   // Keep haptics audio state synchronized
   useEffect(() => {
@@ -102,40 +114,90 @@ export function App() {
     <div className="min-h-screen bg-ios-background dark:bg-ios-background-dark text-black dark:text-white flex justify-center selection:bg-ios-blue selection:text-white transition-colors duration-200">
       {/* Mobile-centric constrained container with desktop elegance */}
       <div className="w-full max-w-lg min-h-screen flex flex-col relative px-4 sm:px-6 pt-4 sm:pt-6 pb-24">
-        {/* iOS Dynamic Island / Status area styling decoration */}
-        <header className="flex items-center justify-between pb-4 pt-1">
+        {/* iOS Dynamic Island / Status area styling decoration & Ledger Switcher */}
+        <header className="flex items-center justify-between pb-3.5 pt-1">
           <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 rounded-xl bg-ios-blue flex items-center justify-center text-white shadow-sm shadow-ios-blue/30">
-              <Wallet className="w-4 h-4" />
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-sm transition-all duration-300 ${
+              activeLedger === "shared"
+                ? "bg-gradient-to-tr from-pink-500 to-rose-500 shadow-rose-500/30"
+                : "bg-ios-blue shadow-ios-blue/30"
+            }`}>
+              {activeLedger === "shared" ? (
+                <Heart className="w-4 h-4 fill-current" />
+              ) : (
+                <Wallet className="w-4 h-4" />
+              )}
             </div>
             <div>
-              <span className="text-base font-bold tracking-tight">极简记账</span>
-              <span className="text-[10px] ml-1.5 px-1.5 py-0.5 rounded-full bg-ios-gray-5 dark:bg-ios-gray-dark4 text-ios-gray-1 font-mono uppercase">
-                {baseCurrency}
-              </span>
+              <div className="flex items-center space-x-1.5">
+                <span className="text-base font-bold tracking-tight">
+                  {activeLedger === "shared" ? "情侣共享" : "个人私密"}
+                </span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-ios-gray-5 dark:bg-ios-gray-dark4 text-ios-gray-1 font-mono uppercase">
+                  {baseCurrency}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Quick theme switcher button */}
-          <button
-            type="button"
-            onClick={() => {
-              const nextTheme =
-                theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
-              setTheme(nextTheme);
-              haptics.selection();
-            }}
-            className="w-8 h-8 rounded-full bg-white dark:bg-ios-gray-dark3 shadow-sm border border-black/5 dark:border-white/10 flex items-center justify-center text-ios-gray-1 hover:text-black dark:hover:text-white cursor-pointer transition-colors"
-            title="切换主题"
-          >
-            {theme === "light" ? (
-              <Sun className="w-4 h-4 text-orange-500" />
-            ) : theme === "dark" ? (
-              <Moon className="w-4 h-4 text-ios-blue" />
-            ) : (
-              <Laptop className="w-4 h-4 text-ios-gray-1" />
-            )}
-          </button>
+          {/* Central / Right Controls: Ledger Switcher + Theme */}
+          <div className="flex items-center space-x-2">
+            {/* iOS Segmented Pill Switcher */}
+            <div className="flex items-center bg-ios-gray-5 dark:bg-ios-gray-dark4 p-1 rounded-2xl border border-black/[0.04] dark:border-white/[0.08]">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveLedger("personal");
+                  haptics.selection();
+                }}
+                className={`flex items-center space-x-1 px-2.5 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  activeLedger === "personal"
+                    ? "bg-white dark:bg-ios-gray-dark2 text-ios-blue shadow-sm"
+                    : "text-ios-gray-1 dark:text-ios-gray-2 hover:text-black dark:hover:text-white"
+                }`}
+              >
+                <User className="w-3 h-3" />
+                <span>个人</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveLedger("shared");
+                  haptics.selection();
+                  sharedLedger.reloadSettlement();
+                }}
+                className={`flex items-center space-x-1 px-2.5 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  activeLedger === "shared"
+                    ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-sm"
+                    : "text-ios-gray-1 dark:text-ios-gray-2 hover:text-black dark:hover:text-white"
+                }`}
+              >
+                <Heart className="w-3 h-3 fill-current" />
+                <span>共享</span>
+              </button>
+            </div>
+
+            {/* Quick theme switcher button */}
+            <button
+              type="button"
+              onClick={() => {
+                const nextTheme =
+                  theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
+                setTheme(nextTheme);
+                haptics.selection();
+              }}
+              className="w-8 h-8 rounded-full bg-white dark:bg-ios-gray-dark3 shadow-sm border border-black/5 dark:border-white/10 flex items-center justify-center text-ios-gray-1 hover:text-black dark:hover:text-white cursor-pointer transition-colors"
+              title="切换主题"
+            >
+              {theme === "light" ? (
+                <Sun className="w-4 h-4 text-orange-500" />
+              ) : theme === "dark" ? (
+                <Moon className="w-4 h-4 text-ios-blue" />
+              ) : (
+                <Laptop className="w-4 h-4 text-ios-gray-1" />
+              )}
+            </button>
+          </div>
         </header>
 
         {/* Main Tab Views with Smooth Transition */}
@@ -150,10 +212,16 @@ export function App() {
                 transition={{ duration: 0.18 }}
               >
                 <TransactionsView
-                  transactions={transactions}
+                  transactions={currentLedgerTransactions}
                   categories={categories}
                   accounts={accounts}
                   baseCurrency={baseCurrency}
+                  currentLedger={activeLedger}
+                  settlementSummary={sharedLedger.settlement}
+                  onSettleDebt={async () => {
+                    await sharedLedger.settleUp();
+                    await refreshAll();
+                  }}
                   onDeleteTransaction={deleteTransaction}
                   onOpenQuickAdd={handleOpenQuickAdd}
                 />
@@ -321,9 +389,11 @@ export function App() {
           accounts={accounts}
           baseCurrency={baseCurrency}
           rates={rates}
+          currentLedger={activeLedger}
           onAddTransaction={async (tx) => {
             await addTransaction(tx);
             await refreshAll();
+            await sharedLedger.reloadSettlement();
           }}
           initialType={quickAddType}
         />

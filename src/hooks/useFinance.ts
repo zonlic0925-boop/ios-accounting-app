@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { repository, type TransactionFilter, type NetWorthSummary, type TransferParams } from "../services/dataRepository";
+import {
+  repository,
+  type TransactionFilter,
+  type NetWorthSummary,
+  type TransferParams,
+  type SharedSettlementSummary,
+} from "../services/dataRepository";
 import {
   currencyService,
   formatMoney,
@@ -9,7 +15,13 @@ import {
   getAllCurrencies,
   getPopularCurrencies,
 } from "../services/currency";
-import { type Transaction, type Account, type Category, type TransactionType, initializeDatabase } from "../db";
+import {
+  type Transaction,
+  type Account,
+  type Category,
+  type TransactionType,
+  initializeDatabase,
+} from "../db";
 
 /**
  * Hook for managing active base currency and multi-currency exchange rates
@@ -115,7 +127,7 @@ export function useTransactions(filter?: TransactionFilter) {
     } finally {
       setLoading(false);
     }
-  }, [filter?.startDate, filter?.endDate, filter?.categoryId, filter?.accountId, filter?.type, filter?.query]);
+  }, [filter?.ledgerId, filter?.startDate, filter?.endDate, filter?.categoryId, filter?.accountId, filter?.type, filter?.query]);
 
   useEffect(() => {
     reloadTransactions();
@@ -371,22 +383,65 @@ export function useSettings() {
 }
 
 /**
+ * Hook for Couples Shared Ledger settlement calculation and actions
+ */
+export function useSharedLedger() {
+  const [settlement, setSettlement] = useState<SharedSettlementSummary | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  const reloadSettlement = useCallback(async () => {
+    try {
+      const summary = await repository.getSharedSettlementSummary();
+      setSettlement(summary);
+    } catch (e) {
+      console.error("Failed to load shared settlement:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    reloadSettlement();
+  }, [reloadSettlement]);
+
+  const settleUp = useCallback(async (note?: string) => {
+    setLoading(true);
+    try {
+      const id = await repository.settleSharedLedger(note);
+      await reloadSettlement();
+      return id;
+    } finally {
+      setLoading(false);
+    }
+  }, [reloadSettlement]);
+
+  return {
+    settlement,
+    loading,
+    reloadSettlement,
+    settleUp,
+  };
+}
+
+/**
  * Unified hook combining all financial state for convenience
  */
-export function useFinance() {
+export function useFinance(filter?: TransactionFilter) {
   const currency = useCurrency();
-  const transactions = useTransactions();
+  const transactions = useTransactions(filter);
   const accounts = useAccounts();
   const categories = useCategories();
   const settings = useSettings();
+  const shared = useSharedLedger();
 
   const refreshAll = useCallback(async () => {
     await Promise.all([
       transactions.reloadTransactions(),
       accounts.reloadAccounts(),
       categories.reloadCategories(),
+      shared.reloadSettlement(),
     ]);
-  }, [transactions, accounts, categories]);
+  }, [transactions, accounts, categories, shared]);
 
   return {
     currency,
@@ -394,7 +449,9 @@ export function useFinance() {
     accounts,
     categories,
     settings,
+    shared,
     refreshAll,
   };
 }
+
 

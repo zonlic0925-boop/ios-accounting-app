@@ -2,9 +2,18 @@ import Dexie, { type Table } from "dexie";
 
 export type TransactionType = "expense" | "income" | "transfer";
 export type AccountType = "cash" | "credit" | "debit" | "investment" | "other";
+export type LedgerId = "personal" | "shared";
+export type PayerType = "me" | "partner";
+export type SplitRule = "50_50" | "100_me" | "100_partner" | "custom";
 
 export interface Transaction {
   id?: number;
+  remoteId?: string;          // 云端分布式全局唯一ID (Distributed UUID for cross-device sync)
+  ledgerId?: LedgerId;        // 账本隔离ID: 'personal' (个人私密) | 'shared' (恋爱共享)
+  payer?: PayerType;          // 出资人: 'me' (我付的) | 'partner' (对方付的)
+  splitRule?: SplitRule;      // 分摊比例: 50_50 (平分) | 100_me (我全包) | 100_partner (对方全包) | custom
+  myShareAmount?: number;     // 当前用户实际需承担的主币种折算金额
+  syncStatus?: "synced" | "pending"; // 云端同步状态: 'synced' | 'pending'
   title: string;
   amount: number;             // 原始金额 (Original amount)
   currency: string;           // 交易币种 (Transaction currency code, e.g. "USD", "JPY", "CNY")
@@ -99,6 +108,26 @@ export class FinanceDatabase extends Dexie {
       for (const a of accs) {
         if (!a.currency) a.currency = defaultBase;
         await accTable.put(a);
+      }
+    });
+
+    // Version 3: Shared Couple Ledger, Payer, Split Rule & Sync Status
+    this.version(3).stores({
+      transactions: "++id, remoteId, ledgerId, payer, syncStatus, title, type, currency, baseCurrency, categoryId, accountId, targetAccountId, date, createdAt, updatedAt",
+      categories: "id, type, sortOrder",
+      accounts: "id, type, currency, isDefault",
+      settings: "key",
+    }).upgrade(async (tx) => {
+      const transTable = tx.table<Transaction, number>("transactions");
+      const trans = await transTable.toArray();
+      for (const t of trans) {
+        if (!t.ledgerId) t.ledgerId = "personal";
+        if (!t.payer) t.payer = "me";
+        if (!t.splitRule) t.splitRule = "100_me";
+        if (t.myShareAmount === undefined) t.myShareAmount = t.baseAmount;
+        if (!t.syncStatus) t.syncStatus = "synced";
+        if (!t.remoteId) t.remoteId = `tx_${t.id || Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        await transTable.put(t);
       }
     });
   }

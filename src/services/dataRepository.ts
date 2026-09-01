@@ -1,4 +1,4 @@
-import { db, type Transaction, type Category, type Account, type TransactionType } from "../db";
+import { db, type Transaction, type Category, type Account, type TransactionType, type LedgerId } from "../db";
 import { currencyService, convertAmount, getRate } from "./currency";
 
 export interface TransactionFilter {
@@ -8,6 +8,19 @@ export interface TransactionFilter {
   accountId?: string;
   type?: TransactionType;
   query?: string;
+  ledgerId?: LedgerId;
+}
+
+export interface SharedSettlementSummary {
+  totalSharedExpense: number; // 共享账本总支出 (以主币种折算)
+  totalPaidByMe: number;      // 我累计垫付金额
+  totalPaidByPartner: number; // 对方累计垫付金额
+  myTotalShare: number;       // 我本应承担的总金额
+  partnerTotalShare: number;  // 对方本应承担的总金额
+  netBalance: number;         // 净轧差：> 0 表示对方应付我，< 0 表示我应付对方
+  payerOwesWhom: "partner_owes_me" | "i_owe_partner" | "settled";
+  owesAmount: number;         // 需结算绝对值金额
+  baseCurrency: string;
 }
 
 export interface NetWorthSummary {
@@ -100,8 +113,30 @@ export class DataRepository {
         : convertAmount(input.amount, input.currency, baseCur);
 
     const now = Date.now();
+    const ledgerId = input.ledgerId || "personal";
+    const payer = input.payer || "me";
+    const splitRule = input.splitRule || (ledgerId === "shared" ? "50_50" : "100_me");
+
+    // Calculate myShareAmount (my actual financial responsibility in base currency)
+    let myShare = baseAmt;
+    if (ledgerId === "shared") {
+      if (splitRule === "50_50") {
+        myShare = Number((baseAmt / 2).toFixed(2));
+      } else if (splitRule === "100_me") {
+        myShare = baseAmt;
+      } else if (splitRule === "100_partner") {
+        myShare = 0;
+      }
+    }
+
     const transactionRecord: Transaction = {
       ...input,
+      remoteId: input.remoteId || `tx_${now}_${Math.random().toString(36).slice(2, 9)}`,
+      ledgerId,
+      payer,
+      splitRule,
+      myShareAmount: myShare,
+      syncStatus: input.syncStatus || "pending",
       currency: input.currency.toUpperCase(),
       baseCurrency: baseCur,
       exchangeRate: rate,
@@ -280,6 +315,9 @@ export class DataRepository {
     let items = await collection.toArray();
 
     if (filter) {
+      if (filter.ledgerId) {
+        items = items.filter((t) => (t.ledgerId || "personal") === filter.ledgerId);
+      }
       if (filter.startDate) {
         items = items.filter((t) => t.date >= filter.startDate!);
       }
@@ -523,6 +561,132 @@ export class DataRepository {
     }
 
     return importedCount;
+  }
+
+  /**
+   * Calculate Shared Ledger Settlement Balance (轧差清算)
+   * Net Balance: positive = partner owes me; negative = I owe partner; 0 = settled
+   */
+  public async getSharedSettlementSummary(): Promise<SharedSettlementSummary> {
+    const baseCurrency = await this.getBaseCurrency();
+    const sharedTxs = await db.transactions
+      .filter((t) => (t.ledgerId || "personal") === "shared")
+      .toArray();
+
+    let totalSharedExpense = 0;
+    let totalPaidByMe = 0;
+    let totalPaidByPartner = 0;
+    let myTotalShare = 0;
+    let partnerTotalShare = 0;
+
+    for (const tx of sharedTxs) {
+      if (tx.type === "expense") {
+        totalSharedExpense += tx.baseAmount;
+        const payer = tx.payer || "me";
+        const splitRule = tx.splitRule || "50_50";
+
+        // Calculate who paid
+        if (payer === "me") {
+          totalPaidByMe += tx.baseAmount;
+        } else if (payer === "partner") {
+          totalPaidByPartner += tx.baseAmount;
+        }
+
+        // Calculate who is responsible for how much
+        let myShare = tx.myShareAmount;
+        if (myShare === undefined) {
+          if (splitRule === "50_50") myShare = tx.baseAmount / 2;
+          else if (splitRule === "100_me") myShare = tx.baseAmount;
+          else if (splitRule === "100_partner") myShare = 0;
+          else myShare = tx.baseAmount / 2;
+        }
+        const partnerShare = tx.baseAmount - myShare;
+
+        myTotalShare += myShare;
+        partnerTotalShare += partnerShare;
+      } else if (tx.type === "transfer" && tx.categoryId === "settlement") {
+        // Settlement record: if payer is partner, partner gave me money; if payer is me, I gave partner money
+        if (tx.payer === "partner") {
+          // Partner paid me, reduces what partner owes me (treat as partner paid toward debt)
+          totalPaidByPartner += tx.baseAmount;
+          myTotalShare += tx.baseAmount; // balance adjustment
+        } else {
+          totalPaidByMe += tx.baseAmount;
+          partnerTotalShare += tx.baseAmount;
+        }
+      }
+    }
+
+    // netBalance = What I paid - What I should bear
+    // If netBalance > 0: I paid more than my share => partner owes me
+    // If netBalance < 0: partner paid more => I owe partner
+    const netBalance = Number((totalPaidByMe - myTotalShare).toFixed(2));
+    const owesAmount = Math.abs(netBalance);
+
+    let payerOwesWhom: "partner_owes_me" | "i_owe_partner" | "settled" = "settled";
+    if (netBalance > 0.05) {
+      payerOwesWhom = "partner_owes_me";
+    } else if (netBalance < -0.05) {
+      payerOwesWhom = "i_owe_partner";
+    }
+
+    return {
+      totalSharedExpense: Number(totalSharedExpense.toFixed(2)),
+      totalPaidByMe: Number(totalPaidByMe.toFixed(2)),
+      totalPaidByPartner: Number(totalPaidByPartner.toFixed(2)),
+      myTotalShare: Number(myTotalShare.toFixed(2)),
+      partnerTotalShare: Number(partnerTotalShare.toFixed(2)),
+      netBalance,
+      payerOwesWhom,
+      owesAmount: Number(owesAmount.toFixed(2)),
+      baseCurrency,
+    };
+  }
+
+  /**
+   * Settle Up Shared Debt with a special settlement record
+   */
+  public async settleSharedLedger(note?: string): Promise<number | null> {
+    const summary = await this.getSharedSettlementSummary();
+    if (summary.payerOwesWhom === "settled" || summary.owesAmount <= 0) {
+      return null;
+    }
+
+    const accounts = await db.accounts.toArray();
+    const primaryAccount = accounts[0] || { id: "cash", currency: summary.baseCurrency };
+    const now = Date.now();
+    const today = new Date().toISOString().split("T")[0];
+
+    const whoPaid = summary.payerOwesWhom === "partner_owes_me" ? "partner" : "me";
+    const title = summary.payerOwesWhom === "partner_owes_me" ? "结清：对方转入结清款" : "结清：转账还清垫付款";
+
+    const settlementTx: Transaction = {
+      remoteId: `tx_settle_${now}_${Math.random().toString(36).slice(2, 7)}`,
+      title,
+      amount: summary.owesAmount,
+      currency: summary.baseCurrency,
+      baseAmount: summary.owesAmount,
+      baseCurrency: summary.baseCurrency,
+      exchangeRate: 1,
+      type: "transfer",
+      ledgerId: "shared",
+      payer: whoPaid,
+      splitRule: "100_me",
+      myShareAmount: summary.payerOwesWhom === "partner_owes_me" ? summary.owesAmount : 0,
+      categoryId: "settlement",
+      categoryName: "情侣结清",
+      categoryIcon: "HeartHandshake",
+      categoryColor: "#FF2D55",
+      accountId: primaryAccount.id,
+      date: today,
+      note: note || `结算平账：轧差结清 ${summary.baseCurrency} ${summary.owesAmount}`,
+      syncStatus: "pending",
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const id = await db.transactions.add(settlementTx);
+    return id as number;
   }
 
   /**
