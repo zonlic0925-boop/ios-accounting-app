@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Receipt,
@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useFinance } from "./hooks/useFinance";
 import type { LedgerId } from "./db";
+import { syncService } from "./services/syncService";
 import { TransactionsView } from "./components/TransactionsView";
 import { AnalyticsView } from "./components/AnalyticsView";
 import { AccountsView } from "./components/AccountsView";
@@ -59,6 +60,34 @@ export function App() {
   useEffect(() => {
     haptics.setEnabled(soundEnabled);
   }, [soundEnabled]);
+
+  // Couple ledger cloud sync: periodic pull/push, refresh on PWA foreground, live UI update on partner changes
+  const refreshAllRef = useRef(refreshAll);
+  refreshAllRef.current = refreshAll;
+
+  useEffect(() => {
+    if (syncService.getRoomId()) {
+      syncService.syncNow().catch(() => {});
+    }
+    syncService.startAutoSync(15000);
+
+    const unsub = syncService.onSync(() => {
+      refreshAllRef.current();
+    });
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && syncService.getRoomId()) {
+        syncService.syncNow().catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      syncService.stopAutoSync();
+      unsub();
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
 
   // Keep theme class and system preference synchronized on documentElement
   useEffect(() => {

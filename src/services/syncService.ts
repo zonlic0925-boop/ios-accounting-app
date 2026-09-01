@@ -7,8 +7,11 @@ export interface SyncResult {
   syncedCount?: number;
 }
 
+type SyncListener = (result: SyncResult) => void;
+
 class SyncService {
   private syncTimer: any = null;
+  private listeners: Set<SyncListener> = new Set();
 
   public getRoomId(): string | null {
     return localStorage.getItem("ios_finance_shared_room_id");
@@ -31,6 +34,25 @@ class SyncService {
   }
 
   /**
+   * Subscribe to completed sync cycles; returns an unsubscribe function.
+   * Fired only on success with at least one locally applied change.
+   */
+  public onSync(listener: SyncListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private emit(result: SyncResult): void {
+    for (const fn of this.listeners) {
+      try {
+        fn(result);
+      } catch {
+        // A broken listener must never break the sync loop
+      }
+    }
+  }
+
+  /**
    * Create a new shared room code
    */
   public async createRoom(roomName: string = "恋爱共享账本"): Promise<{ success: boolean; roomId?: string; message: string }> {
@@ -45,12 +67,10 @@ class SyncService {
         this.setRoomId(data.roomId);
         return { success: true, roomId: data.roomId, message: data.message || "配对房间创建成功" };
       }
-      return { success: false, message: data.message || "创建房间失败" };
+      return { success: false, message: data.message || "创建房间失败，请稍后重试" };
     } catch (err: any) {
-      // Fallback: Generate local room code if offline/mock
-      const localCode = "LOVE" + Math.floor(1000 + Math.random() * 9000);
-      this.setRoomId(localCode);
-      return { success: true, roomId: localCode, message: "已生成专属配对码" };
+      // A local-only room can never reach the partner's device, so offline creation fails honestly
+      return { success: false, message: "网络连接失败，无法创建共享房间" };
     }
   }
 
@@ -75,8 +95,7 @@ class SyncService {
       }
       return { success: false, message: data.message || "加入失败" };
     } catch (err: any) {
-      this.setRoomId(trimmed);
-      return { success: true, message: "已保存配对码" };
+      return { success: false, message: "网络连接失败，请检查网络后重试" };
     }
   }
 
@@ -128,8 +147,7 @@ class SyncService {
         const existing = await db.transactions.where("remoteId").equals(key).first();
 
         if (!existing) {
-          // Add new from partner
-          // Strip auto-increment numeric ID so Dexie assigns new
+          // Add new from partner; strip the remote device's auto-increment id so Dexie assigns our own
           const { id, ...cleanTx } = rTx;
           await db.transactions.add({
             ...cleanTx,
@@ -141,9 +159,10 @@ class SyncService {
           });
           updatedCount++;
         } else if ((rTx.updatedAt || 0) > (existing.updatedAt || 0)) {
-          // Update existing with newer remote
+          // Update existing with newer remote (never touch the primary key)
+          const { id, ...cleanTx } = rTx;
           await db.transactions.update(existing.id!, {
-            ...rTx,
+            ...cleanTx,
             remoteId: key,
             ledgerId: "shared",
             syncStatus: "synced",
@@ -152,7 +171,23 @@ class SyncService {
         }
       }
 
-      return { success: true, syncedCount: updatedCount, message: "同步成功" };
+      // 4. Our own pending records made it to the cloud; flip them to synced
+      const pendingCount = await db.transactions
+        .filter((t) => t.ledgerId === "shared" && t.syncStatus === "pending")
+        .count();
+      if (pendingCount > 0) {
+        await db.transactions
+          .filter((t) => t.ledgerId === "shared" && t.syncStatus === "pending")
+          .modify({ syncStatus: "synced" });
+      }
+
+      const result: SyncResult = {
+        success: true,
+        syncedCount: updatedCount,
+        message: "同步成功",
+      };
+      if (updatedCount > 0) this.emit(result);
+      return result;
     } catch (err: any) {
       return { success: false, message: err.message || "同步异常" };
     }
