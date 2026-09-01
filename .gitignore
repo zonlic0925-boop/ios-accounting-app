@@ -33,3 +33,6 @@ find_flutter.ps1
 # Tooling internals
 .zcode
 skills-master
+
+# Wrangler local dev state & temp bundles
+.wrangler/
