@@ -3,16 +3,14 @@ import Dexie, { type Table } from "dexie";
 export type TransactionType = "expense" | "income" | "transfer";
 export type AccountType = "cash" | "credit" | "debit" | "investment" | "other";
 export type LedgerId = "personal" | "shared";
-export type PayerType = "me" | "partner";
-export type SplitRule = "50_50" | "100_me" | "100_partner" | "custom";
 
 export interface Transaction {
   id?: number;
   remoteId?: string;          // 云端分布式全局唯一ID (Distributed UUID for cross-device sync)
   ledgerId?: LedgerId;        // 账本隔离ID: 'personal' (个人私密) | 'shared' (恋爱共享)
-  payer?: PayerType;          // 出资人: 'me' (我付的) | 'partner' (对方付的)
-  splitRule?: SplitRule;      // 分摊比例: 50_50 (平分) | 100_me (我全包) | 100_partner (对方全包) | custom
-  myShareAmount?: number;     // 当前用户实际需承担的主币种折算金额
+  ownerId?: string;           // 共享账本归属: 记录创建者的设备 ownerKey (谁记的即谁出的)
+  ownerName?: string;         // 记账人当时的称呼快照 (便于云端查看)
+  settlementBy?: "me" | "partner"; // 仅结算记录使用: 相对记录创建者, 谁交付的这笔款
   syncStatus?: "synced" | "pending"; // 云端同步状态: 'synced' | 'pending'
   title: string;
   amount: number;             // 原始金额 (Original amount)
@@ -118,7 +116,8 @@ export class FinanceDatabase extends Dexie {
       accounts: "id, type, currency, isDefault",
       settings: "key",
     }).upgrade(async (tx) => {
-      const transTable = tx.table<Transaction, number>("transactions");
+      type LegacyTx = Transaction & { payer?: string; splitRule?: string; myShareAmount?: number };
+      const transTable = tx.table<LegacyTx, number>("transactions");
       const trans = await transTable.toArray();
       for (const t of trans) {
         if (!t.ledgerId) t.ledgerId = "personal";
@@ -130,10 +129,54 @@ export class FinanceDatabase extends Dexie {
         await transTable.put(t);
       }
     });
+
+    // Version 4: Ownership model — who recorded it paid it; drop payer/split rules
+    this.version(4).stores({
+      transactions: "++id, remoteId, ledgerId, ownerId, syncStatus, title, type, currency, baseCurrency, categoryId, accountId, targetAccountId, date, createdAt, updatedAt",
+      categories: "id, type, sortOrder",
+      accounts: "id, type, currency, isDefault",
+      settings: "key",
+    }).upgrade(async (tx) => {
+      type LegacyTx = Transaction & { payer?: string; splitRule?: string; myShareAmount?: number };
+      const transTable = tx.table<LegacyTx, number>("transactions");
+      const trans = await transTable.toArray();
+      for (const legacy of trans) {
+        // Old "payer" choice becomes hard ownership: the record creator paid it.
+        // If the user previously logged a partner-paid item, it still belongs to the partner.
+        if (legacy.ledgerId === "shared") {
+          if (legacy.payer === "partner" && legacy.splitRule === "100_partner") {
+            legacy.ownerId = "partner";
+          } else {
+            legacy.ownerId = getDeviceOwnerKey();
+          }
+        } else {
+          legacy.ownerId = undefined;
+        }
+        delete legacy.payer;
+        delete legacy.splitRule;
+        delete legacy.myShareAmount;
+        await transTable.put(legacy);
+      }
+    });
   }
 }
 
 export const db = new FinanceDatabase();
+
+/**
+ * Per-device identity for shared-ledger ownership. Lives here so the Dexie
+ * v4 migration and the sync service resolve the exact same ownerKey —
+ * legacy records stamped "me" must match the device's real key.
+ */
+export function getDeviceOwnerKey(): string {
+  const STORAGE = "ios_finance_owner_key";
+  let key = localStorage.getItem(STORAGE);
+  if (!key) {
+    key = `dev_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(STORAGE, key);
+  }
+  return key;
+}
 
 /**
  * Standard Preset Expense Categories with Modern Lucide Icons and iOS Harmonized Colors

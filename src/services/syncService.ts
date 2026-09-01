@@ -1,5 +1,5 @@
 // Client sync service for Cloudflare Pages Functions
-import { db } from "../db";
+import { db, getDeviceOwnerKey } from "../db";
 
 export interface SyncResult {
   success: boolean;
@@ -8,6 +8,9 @@ export interface SyncResult {
 }
 
 type SyncListener = (result: SyncResult) => void;
+
+const MY_NICK_STORAGE = "ios_finance_my_nickname";
+const PARTNER_NICK_STORAGE = "ios_finance_partner_name";
 
 class SyncService {
   private syncTimer: any = null;
@@ -25,12 +28,39 @@ class SyncService {
     }
   }
 
+  /**
+   * Per-device identity for shared ledger ownership.
+   * A transaction belongs to whoever recorded it; the cloud keeps the
+   * recorder's ownerKey so both devices resolve ownership the same way.
+   * The key itself is generated in db/index.ts so the schema migration
+   * stamps legacy records with the identical key.
+   */
+  public getOwnerKey(): string {
+    return getDeviceOwnerKey();
+  }
+
+  /** True if this shared transaction was recorded (and paid) on this device. */
+  public isMine(tx: { ownerId?: string }): boolean {
+    // Records synced before the ownership model existed carry no ownerId;
+    // treat them as locally recorded until the next push stamps them.
+    if (!tx.ownerId) return true;
+    return tx.ownerId === this.getOwnerKey();
+  }
+
+  public getMyNickname(): string {
+    return localStorage.getItem(MY_NICK_STORAGE) || "我";
+  }
+
+  public setMyNickname(name: string): void {
+    localStorage.setItem(MY_NICK_STORAGE, name.trim() || "我");
+  }
+
   public getPartnerNickname(): string {
-    return localStorage.getItem("ios_finance_partner_name") || "女朋友";
+    return localStorage.getItem(PARTNER_NICK_STORAGE) || "宝贝";
   }
 
   public setPartnerNickname(name: string): void {
-    localStorage.setItem("ios_finance_partner_name", name);
+    localStorage.setItem(PARTNER_NICK_STORAGE, name.trim() || "宝贝");
   }
 
   /**
@@ -114,10 +144,24 @@ class SyncService {
     if (!roomId) return { success: false, message: "未加入任何共享账本" };
 
     try {
+      const ownerKey = this.getOwnerKey();
+
       // 1. Collect pending local shared transactions
       const localSharedTxs = await db.transactions
         .filter((t) => t.ledgerId === "shared")
         .toArray();
+
+      // 1b. Stamp ownership: whoever records (and pays) it owns it
+      for (const tx of localSharedTxs) {
+        if (!tx.ownerId) {
+          tx.ownerId = ownerKey;
+          tx.ownerName = this.getMyNickname();
+          await db.transactions.update(tx.id!, {
+            ownerId: tx.ownerId,
+            ownerName: tx.ownerName,
+          });
+        }
+      }
 
       // 2. Call cloudflare pages function
       const res = await fetch("/api/ledger/sync", {
@@ -153,6 +197,9 @@ class SyncService {
             ...cleanTx,
             remoteId: key,
             ledgerId: "shared",
+            // The recorder's ownerId travels with the record so both devices agree on who paid
+            ownerId: cleanTx.ownerId || "partner-device",
+            ownerName: cleanTx.ownerName,
             syncStatus: "synced",
             createdAt: rTx.createdAt || Date.now(),
             updatedAt: rTx.updatedAt || Date.now(),
@@ -165,6 +212,7 @@ class SyncService {
             ...cleanTx,
             remoteId: key,
             ledgerId: "shared",
+            ownerId: cleanTx.ownerId || existing.ownerId,
             syncStatus: "synced",
           });
           updatedCount++;

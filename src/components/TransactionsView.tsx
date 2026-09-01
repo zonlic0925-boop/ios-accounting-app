@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import type { Transaction, Category, Account, LedgerId } from "../db";
 import type { SharedSettlementSummary } from "../services/dataRepository";
+import { syncService } from "../services/syncService";
 import { CategoryIcon } from "./CategoryIcon";
 import { formatCurrencyWithCode } from "../services/currency";
 import { haptics } from "../lib/haptics";
@@ -44,6 +45,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("all");
   const [showFilters, setShowFilters] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+
+  const myNickname = syncService.getMyNickname();
+  const partnerNickname = syncService.getPartnerNickname();
 
   const categoryMap = useMemo(() => {
     return new Map(categories.map((c) => [c.id, c]));
@@ -171,8 +175,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
               <div>
                 <h2 className="text-sm font-bold text-black dark:text-white">恋爱账本 · 共同生活点滴</h2>
                 <p className="text-[11px] text-ios-gray-1">两个人一起花了 {formatCurrencyWithCode(settlementSummary.totalSharedExpense, baseCurrency)}</p>
-              </div>
-            </div>
+              </div>            </div>
 
             {onSettleDebt && settlementSummary.payerOwesWhom !== "settled" && (
               <button
@@ -192,13 +195,13 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           {/* Breakdown Grid */}
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="bg-white/70 dark:bg-[#1C1C1E]/70 p-2.5 rounded-2xl border border-black/[0.03] dark:border-white/[0.05]">
-              <span className="text-ios-gray-1 text-[11px]">🙋‍♂️ 我买单的</span>
+              <span className="text-ios-gray-1 text-[11px]">💗 {myNickname}出的</span>
               <p className="font-bold text-black dark:text-white font-mono text-sm mt-0.5">
                 {formatCurrencyWithCode(settlementSummary.totalPaidByMe, baseCurrency)}
               </p>
             </div>
             <div className="bg-white/70 dark:bg-[#1C1C1E]/70 p-2.5 rounded-2xl border border-black/[0.03] dark:border-white/[0.05]">
-              <span className="text-ios-gray-1 text-[11px]">🙋‍♀️ 宝贝买单的</span>
+              <span className="text-ios-gray-1 text-[11px]">💞 {partnerNickname}出的</span>
               <p className="font-bold text-black dark:text-white font-mono text-sm mt-0.5">
                 {formatCurrencyWithCode(settlementSummary.totalPaidByPartner, baseCurrency)}
               </p>
@@ -218,11 +221,11 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                 </span>
               ) : settlementSummary.payerOwesWhom === "partner_owes_me" ? (
                 <span className="text-rose-500 font-semibold">
-                  你悄悄多照顾了宝贝 {formatCurrencyWithCode(settlementSummary.owesAmount, baseCurrency)}，下次让 TA 请客喝奶茶 🥤
+                  {partnerNickname}还差 {formatCurrencyWithCode(settlementSummary.owesAmount, baseCurrency)}，下次让 TA 请客喝奶茶 🥤
                 </span>
               ) : (
                 <span className="text-pink-500 font-semibold">
-                  宝贝最近多付出了 {formatCurrencyWithCode(settlementSummary.owesAmount, baseCurrency)}，快准备个小惊喜犒劳一下 🎁
+                  你多付了 {formatCurrencyWithCode(settlementSummary.owesAmount, baseCurrency)}，{partnerNickname}该补上啦 🎁
                 </span>
               )}
             </span>
@@ -468,22 +471,15 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                                 {acc.name}
                               </span>
                             )}
-                            {/* Shared Ledger Payer / Split Badges */}
+                            {/* Shared Ledger Ownership Badge: who recorded it paid it */}
                             {tx.ledgerId === "shared" && (
-                              <>
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium shrink-0 ${
-                                  tx.payer === "me"
-                                    ? "bg-rose-500/10 text-rose-500 dark:bg-rose-500/20"
-                                    : "bg-purple-500/10 text-purple-500 dark:bg-purple-500/20"
-                                }`}>
-                                  {tx.payer === "me" ? "我出的 🙋‍♂️" : "宝贝出的 🙋‍♀️"}
-                                </span>
-                                {tx.splitRule && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-black/5 dark:bg-white/5 text-ios-gray-1 shrink-0">
-                                    {tx.splitRule === "50_50" ? "一起承担 💕" : tx.splitRule === "100_me" ? "这次我请 🎁" : tx.splitRule === "100_partner" ? "宝贝的心意 🌸" : "一起生活"}
-                                  </span>
-                                )}
-                              </>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium shrink-0 ${
+                                syncService.isMine(tx)
+                                  ? "bg-rose-500/10 text-rose-500 dark:bg-rose-500/20"
+                                  : "bg-purple-500/10 text-purple-500 dark:bg-purple-500/20"
+                              }`}>
+                                {syncService.isMine(tx) ? `${myNickname}出的` : `${partnerNickname}出的`}
+                              </span>
                             )}
                           </div>
                           <p className="text-xs text-ios-gray-1 truncate mt-0.5">

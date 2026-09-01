@@ -10,9 +10,8 @@ import {
   ChevronDown,
   Heart,
   User,
-  Users,
 } from "lucide-react";
-import type { Account, Category, LedgerId, PayerType, SplitRule } from "../db";
+import type { Account, Category, LedgerId } from "../db";
 import { IOSKeypad } from "./IOSKeypad";
 import { CategoryIcon } from "./CategoryIcon";
 import { convertAmount, formatCurrencyWithCode, getAllCurrencies } from "../services/currency";
@@ -38,8 +37,6 @@ interface QuickAddModalProps {
     date: string;
     note?: string;
     ledgerId?: LedgerId;
-    payer?: PayerType;
-    splitRule?: SplitRule;
   }) => Promise<void>;
   initialType?: "expense" | "income";
 }
@@ -57,8 +54,6 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
 }) => {
   const [type, setType] = useState<"expense" | "income">(initialType);
   const [targetLedger, setTargetLedger] = useState<LedgerId>(currentLedger);
-  const [payer, setPayer] = useState<PayerType>("me");
-  const [splitRule, setSplitRule] = useState<SplitRule>("50_50");
   const [expression, setExpression] = useState<string>("0");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
@@ -76,17 +71,15 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
     if (isOpen) {
       setType(initialType);
       setTargetLedger(currentLedger);
-      setPayer("me");
-      setSplitRule("50_50");
       setExpression("0");
       setNote("");
       setDate(new Date().toISOString().split("T")[0]);
-      
+
       const defaultCat = categories.find((c) => c.type === initialType);
       if (defaultCat) {
         setSelectedCategoryId(defaultCat.id);
       }
-      
+
       if (accounts.length > 0) {
         const defaultAcc = accounts.find((a) => a.isDefault) || accounts[0];
         setSelectedAccountId(defaultAcc.id);
@@ -163,8 +156,6 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
       date,
       note: note.trim() || undefined,
       ledgerId: targetLedger,
-      payer: targetLedger === "shared" ? payer : undefined,
-      splitRule: targetLedger === "shared" ? splitRule : undefined,
     });
 
     onClose();
@@ -269,99 +260,6 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                 </button>
               </div>
 
-              {/* Shared Ledger Extra Controls (Payer & Split rule) */}
-              {targetLedger === "shared" && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="p-2.5 rounded-2xl bg-rose-500/10 dark:bg-rose-500/15 border border-rose-500/20 space-y-2"
-                >
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
-                      <Users className="w-3.5 h-3.5" /> 这次谁买单:
-                    </span>
-                    <div className="flex items-center space-x-1 bg-white/80 dark:bg-ios-gray-dark3 p-0.5 rounded-lg border border-rose-500/15">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPayer("me");
-                          haptics.selection();
-                        }}
-                        className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
-                          payer === "me"
-                            ? "bg-rose-500 text-white shadow-xs"
-                            : "text-ios-gray-1 hover:text-black dark:hover:text-white"
-                        }`}
-                      >
-                        我买的 🙋‍♂️
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPayer("partner");
-                          haptics.selection();
-                        }}
-                        className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
-                          payer === "partner"
-                            ? "bg-rose-500 text-white shadow-xs"
-                            : "text-ios-gray-1 hover:text-black dark:hover:text-white"
-                        }`}
-                      >
-                        宝贝买的 🙋‍♀️
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs pt-1 border-t border-rose-500/15">
-                    <span className="text-rose-600 dark:text-rose-400 font-semibold">生活默契:</span>
-                    <div className="flex items-center space-x-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSplitRule("50_50");
-                          haptics.selection();
-                        }}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] font-medium transition-all cursor-pointer ${
-                          splitRule === "50_50"
-                            ? "bg-rose-500 text-white font-bold"
-                            : "bg-white/60 dark:bg-ios-gray-dark3 text-ios-gray-1"
-                        }`}
-                      >
-                        一起分担 (50%)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSplitRule("100_me");
-                          haptics.selection();
-                        }}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] font-medium transition-all cursor-pointer ${
-                          splitRule === "100_me"
-                            ? "bg-rose-500 text-white font-bold"
-                            : "bg-white/60 dark:bg-ios-gray-dark3 text-ios-gray-1"
-                        }`}
-                      >
-                        这次我请 🎁
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSplitRule("100_partner");
-                          haptics.selection();
-                        }}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] font-medium transition-all cursor-pointer ${
-                          splitRule === "100_partner"
-                            ? "bg-rose-500 text-white font-bold"
-                            : "bg-white/60 dark:bg-ios-gray-dark3 text-ios-gray-1"
-                        }`}
-                      >
-                        宝贝心意 🌸
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
             </div>
 
             {/* Amount Display & Currency Conversion */}

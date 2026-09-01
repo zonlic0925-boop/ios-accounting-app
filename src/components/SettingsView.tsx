@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Check,
   Heart,
+  User,
   Users,
   Copy,
   ArrowRightLeft,
@@ -62,10 +63,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [syncStatusMsg, setSyncStatusMsg] = useState("");
   const [copiedCode, setCopiedCode] = useState(false);
 
+  // Nicknames: what I call myself and what I call my partner
+  const [myNickname, setMyNickname] = useState(syncService.getMyNickname());
+  const [partnerNickname, setPartnerNickname] = useState(syncService.getPartnerNickname());
+
+  const handleSaveNicknames = () => {
+    syncService.setMyNickname(myNickname);
+    syncService.setPartnerNickname(partnerNickname);
+    haptics.success();
+    setSyncStatusMsg("称呼已更新");
+    setTimeout(() => setSyncStatusMsg(""), 4000);
+  };
+
   const handleCreateRoom = async () => {
     haptics.light();
     setIsPairing(true);
     try {
+      syncService.setMyNickname(myNickname);
+      syncService.setPartnerNickname(partnerNickname);
       const res = await syncService.createRoom();
       if (res.success && res.roomId) {
         setRoomId(res.roomId);
@@ -82,6 +97,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     haptics.light();
     setIsPairing(true);
     try {
+      syncService.setMyNickname(myNickname);
+      syncService.setPartnerNickname(partnerNickname);
       const res = await syncService.joinRoom(inputCode);
       if (res.success) {
         setRoomId(inputCode.trim().toUpperCase());
@@ -171,6 +188,50 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </span>
 
         <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl overflow-hidden shadow-ios-card border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.04] dark:divide-white/[0.04]">
+          {/* Nicknames: used across shared ledger badges & settlement */}
+          <div className="p-4 space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-ios-gray-1 flex items-center space-x-1">
+                  <User className="w-3 h-3 text-ios-blue" />
+                  <span>我的称呼</span>
+                </label>
+                <input
+                  type="text"
+                  value={myNickname}
+                  onChange={(e) => setMyNickname(e.target.value)}
+                  placeholder="我"
+                  maxLength={8}
+                  className="w-full px-3 py-2 text-xs bg-ios-gray-6 dark:bg-ios-gray-dark4 rounded-xl border border-black/[0.04] dark:border-white/[0.06] text-black dark:text-white outline-none focus:border-ios-blue"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-ios-gray-1 flex items-center space-x-1">
+                  <Heart className="w-3 h-3 text-ios-pink fill-ios-pink" />
+                  <span>备注对方</span>
+                </label>
+                <input
+                  type="text"
+                  value={partnerNickname}
+                  onChange={(e) => setPartnerNickname(e.target.value)}
+                  placeholder="宝贝"
+                  maxLength={8}
+                  className="w-full px-3 py-2 text-xs bg-ios-gray-6 dark:bg-ios-gray-dark4 rounded-xl border border-black/[0.04] dark:border-white/[0.06] text-black dark:text-white outline-none focus:border-ios-pink"
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-ios-gray-2 leading-relaxed">
+              共享账本里各自记自己出的钱，对方看到的就是「{partnerNickname || "宝贝"}出的」。
+            </p>
+            <button
+              type="button"
+              onClick={handleSaveNicknames}
+              className="w-full py-2 rounded-xl bg-ios-gray-5 dark:bg-ios-gray-dark3 text-xs font-semibold text-ios-blue hover:bg-ios-blue hover:text-white transition-all cursor-pointer"
+            >
+              保存称呼
+            </button>
+          </div>
+
           {roomId ? (
             /* Paired State */
             <div className="p-4 space-y-3">
@@ -240,7 +301,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     与另一半开启共享记账
                   </div>
                   <p className="text-xs text-ios-gray-1 mt-0.5 leading-relaxed">
-                    个人账本与共享账本独立隔离。一方创建配对码，另一方输入即可双向实时同步与轧差结算。
+                    各自记自己出的钱，双向同步后对方端会显示是谁出的，并自动按各付一半轧差结算。
                   </p>
                 </div>
               </div>
