@@ -658,7 +658,7 @@ export class DataRepository {
     const today = new Date().toISOString().split("T")[0];
 
     const whoPaid = summary.payerOwesWhom === "partner_owes_me" ? "partner" : "me";
-    const title = summary.payerOwesWhom === "partner_owes_me" ? "结清：对方转入结清款" : "结清：转账还清垫付款";
+    const title = summary.payerOwesWhom === "partner_owes_me" ? "爱意对齐：宝贝爱的转账 ❤️" : "爱意对齐：给宝贝的小转账 🎁";
 
     const settlementTx: Transaction = {
       remoteId: `tx_settle_${now}_${Math.random().toString(36).slice(2, 7)}`,
@@ -674,12 +674,12 @@ export class DataRepository {
       splitRule: "100_me",
       myShareAmount: summary.payerOwesWhom === "partner_owes_me" ? summary.owesAmount : 0,
       categoryId: "settlement",
-      categoryName: "情侣结清",
+      categoryName: "爱意对齐",
       categoryIcon: "HeartHandshake",
       categoryColor: "#FF2D55",
       accountId: primaryAccount.id,
       date: today,
-      note: note || `结算平账：轧差结清 ${summary.baseCurrency} ${summary.owesAmount}`,
+      note: note || `甜蜜同步：生活小默契归位 ${summary.baseCurrency} ${summary.owesAmount} ✨`,
       syncStatus: "pending",
       createdAt: now,
       updatedAt: now,

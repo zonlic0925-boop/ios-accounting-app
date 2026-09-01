@@ -8,7 +8,6 @@ import {
   SlidersHorizontal,
   Heart,
   CheckCircle2,
-  Scale,
 } from "lucide-react";
 import type { Transaction, Category, Account, LedgerId } from "../db";
 import type { SharedSettlementSummary } from "../services/dataRepository";
@@ -170,8 +169,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                 <Heart className="w-4 h-4 fill-white" />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-black dark:text-white">恋爱账本 · 对账结算</h2>
-                <p className="text-[11px] text-ios-gray-1">共同支出累计 {formatCurrencyWithCode(settlementSummary.totalSharedExpense, baseCurrency)}</p>
+                <h2 className="text-sm font-bold text-black dark:text-white">恋爱账本 · 共同生活点滴</h2>
+                <p className="text-[11px] text-ios-gray-1">两个人一起花了 {formatCurrencyWithCode(settlementSummary.totalSharedExpense, baseCurrency)}</p>
               </div>
             </div>
 
@@ -182,10 +181,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                   haptics.success();
                   await onSettleDebt();
                 }}
-                className="px-3 py-1.5 rounded-full bg-rose-500 text-white text-xs font-semibold shadow-sm hover:brightness-105 active:scale-95 transition-all flex items-center space-x-1 cursor-pointer"
+                className="px-3 py-1.5 rounded-full bg-gradient-to-r from-rose-500 to-pink-500 text-white text-xs font-semibold shadow-sm hover:brightness-105 active:scale-95 transition-all flex items-center space-x-1 cursor-pointer"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>记一笔结清</span>
+                <span>爱意对齐 💫</span>
               </button>
             )}
           </div>
@@ -193,13 +192,13 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           {/* Breakdown Grid */}
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="bg-white/70 dark:bg-[#1C1C1E]/70 p-2.5 rounded-2xl border border-black/[0.03] dark:border-white/[0.05]">
-              <span className="text-ios-gray-1 text-[11px]">🙋‍♂️ 我垫付</span>
+              <span className="text-ios-gray-1 text-[11px]">🙋‍♂️ 我买单的</span>
               <p className="font-bold text-black dark:text-white font-mono text-sm mt-0.5">
                 {formatCurrencyWithCode(settlementSummary.totalPaidByMe, baseCurrency)}
               </p>
             </div>
             <div className="bg-white/70 dark:bg-[#1C1C1E]/70 p-2.5 rounded-2xl border border-black/[0.03] dark:border-white/[0.05]">
-              <span className="text-ios-gray-1 text-[11px]">🙋‍♀️ 女朋友垫付</span>
+              <span className="text-ios-gray-1 text-[11px]">🙋‍♀️ 宝贝买单的</span>
               <p className="font-bold text-black dark:text-white font-mono text-sm mt-0.5">
                 {formatCurrencyWithCode(settlementSummary.totalPaidByPartner, baseCurrency)}
               </p>
@@ -207,23 +206,23 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           </div>
 
           {/* Bottom Net Diff Conclusion Banner */}
-          <div className="bg-white/90 dark:bg-[#1C1C1E]/90 px-3 py-2 rounded-2xl flex items-center justify-between text-xs border border-black/[0.04] dark:border-white/[0.06]">
-            <div className="flex items-center space-x-1.5 text-ios-gray-1">
-              <Scale className="w-4 h-4 text-rose-500" />
-              <span>结算状态：</span>
+          <div className="bg-white/90 dark:bg-[#1C1C1E]/90 px-3 py-2.5 rounded-2xl flex items-center justify-between text-xs border border-black/[0.04] dark:border-white/[0.06]">
+            <div className="flex items-center space-x-1.5 text-ios-gray-1 shrink-0">
+              <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
+              <span>生活小默契：</span>
             </div>
-            <span className="font-bold font-mono text-xs">
+            <span className="font-medium text-xs text-right">
               {settlementSummary.payerOwesWhom === "settled" ? (
-                <span className="text-emerald-500 flex items-center space-x-1">
-                  <span>双方已结清，两不相欠 ✨</span>
+                <span className="text-rose-500 font-semibold flex items-center space-x-1">
+                  <span>心有灵犀，刚刚好 🥰</span>
                 </span>
               ) : settlementSummary.payerOwesWhom === "partner_owes_me" ? (
-                <span className="text-rose-500">
-                  对方当前应付你 {formatCurrencyWithCode(settlementSummary.owesAmount, baseCurrency)}
+                <span className="text-rose-500 font-semibold">
+                  你悄悄多照顾了宝贝 {formatCurrencyWithCode(settlementSummary.owesAmount, baseCurrency)}，下次让 TA 请客喝奶茶 🥤
                 </span>
               ) : (
-                <span className="text-amber-500">
-                  你当前应付对方 {formatCurrencyWithCode(settlementSummary.owesAmount, baseCurrency)}
+                <span className="text-pink-500 font-semibold">
+                  宝贝最近多付出了 {formatCurrencyWithCode(settlementSummary.owesAmount, baseCurrency)}，快准备个小惊喜犒劳一下 🎁
                 </span>
               )}
             </span>
@@ -477,11 +476,11 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                                     ? "bg-rose-500/10 text-rose-500 dark:bg-rose-500/20"
                                     : "bg-purple-500/10 text-purple-500 dark:bg-purple-500/20"
                                 }`}>
-                                  {tx.payer === "me" ? "我付 🙋‍♂️" : "女友付 🙋‍♀️"}
+                                  {tx.payer === "me" ? "我出的 🙋‍♂️" : "宝贝出的 🙋‍♀️"}
                                 </span>
                                 {tx.splitRule && (
                                   <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-black/5 dark:bg-white/5 text-ios-gray-1 shrink-0">
-                                    {tx.splitRule === "50_50" ? "平摊" : tx.splitRule === "100_me" ? "我全包" : tx.splitRule === "100_partner" ? "对方全包" : "自定义"}
+                                    {tx.splitRule === "50_50" ? "一起承担 💕" : tx.splitRule === "100_me" ? "这次我请 🎁" : tx.splitRule === "100_partner" ? "宝贝的心意 🌸" : "一起生活"}
                                   </span>
                                 )}
                               </>

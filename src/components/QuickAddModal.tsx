@@ -279,7 +279,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                 >
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
-                      <Users className="w-3.5 h-3.5" /> 谁垫付了:
+                      <Users className="w-3.5 h-3.5" /> 这次谁买单:
                     </span>
                     <div className="flex items-center space-x-1 bg-white/80 dark:bg-ios-gray-dark3 p-0.5 rounded-lg border border-rose-500/15">
                       <button
@@ -294,7 +294,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                             : "text-ios-gray-1 hover:text-black dark:hover:text-white"
                         }`}
                       >
-                        我付的 🙋‍♂️
+                        我买的 🙋‍♂️
                       </button>
                       <button
                         type="button"
@@ -308,13 +308,13 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                             : "text-ios-gray-1 hover:text-black dark:hover:text-white"
                         }`}
                       >
-                        对方付的 🙋‍♀️
+                        宝贝买的 🙋‍♀️
                       </button>
                     </div>
                   </div>
 
                   <div className="flex items-center justify-between text-xs pt-1 border-t border-rose-500/15">
-                    <span className="text-rose-600 dark:text-rose-400 font-semibold">分摊方式:</span>
+                    <span className="text-rose-600 dark:text-rose-400 font-semibold">生活默契:</span>
                     <div className="flex items-center space-x-1">
                       <button
                         type="button"
@@ -328,7 +328,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                             : "bg-white/60 dark:bg-ios-gray-dark3 text-ios-gray-1"
                         }`}
                       >
-                        AA平摊 (50%)
+                        一起分担 (50%)
                       </button>
                       <button
                         type="button"
@@ -342,7 +342,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                             : "bg-white/60 dark:bg-ios-gray-dark3 text-ios-gray-1"
                         }`}
                       >
-                        我全包 (100%)
+                        这次我请 🎁
                       </button>
                       <button
                         type="button"
@@ -356,7 +356,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                             : "bg-white/60 dark:bg-ios-gray-dark3 text-ios-gray-1"
                         }`}
                       >
-                        对方全包 (100%)
+                        宝贝心意 🌸
                       </button>
                     </div>
                   </div>
