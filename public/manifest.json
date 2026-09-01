@@ -1,0 +1,23 @@
+{
+  "name": "极简记账 - iOS 多币种记账",
+  "short_name": "极简记账",
+  "description": "iOS 质感优先的多币种实时换算极速记账应用",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#007AFF",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

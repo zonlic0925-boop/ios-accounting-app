@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --ios-safe-area-top: env(safe-area-inset-top, 0px);
+    --ios-safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --ios-safe-area-left: env(safe-area-inset-left, 0px);
+    --ios-safe-area-right: env(safe-area-inset-right, 0px);
+  }
+
+  body {
+    @apply bg-[#F2F2F7] text-[#000000] font-sans antialiased selection:bg-ios-blue/20;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  .dark body {
+    @apply bg-[#000000] text-[#FFFFFF];
+  }
+}
+
+/* iOS Card and Glass Styles */
+.ios-glass {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 0.5px solid rgba(255, 255, 255, 0.5);
+}
+
+.dark .ios-glass {
+  background: rgba(28, 28, 30, 0.82);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 0.5px solid rgba(255, 255, 255, 0.12);
+}
+
+.ios-card {
+  @apply bg-white rounded-3xl p-4 shadow-ios-card border border-black/[0.04] transition-all;
+}
+
+.dark .ios-card {
+  @apply bg-[#1C1C1E] border-white/[0.08] shadow-none;
+}
+
+.ios-tap-active:active {
+  transform: scale(0.97);
+  transition: transform 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Custom Scrollbar for sleek appearance */
+::-webkit-scrollbar {
+  width: 0px;
+  height: 0px;
+}
