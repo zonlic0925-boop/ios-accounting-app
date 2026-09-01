@@ -113,92 +113,96 @@ export function App() {
   return (
     <div className="min-h-screen bg-ios-background dark:bg-ios-background-dark text-black dark:text-white flex justify-center selection:bg-ios-blue selection:text-white transition-colors duration-200">
       {/* Mobile-centric constrained container with desktop elegance */}
-      <div className="w-full max-w-lg min-h-screen flex flex-col relative px-4 sm:px-6 pt-4 sm:pt-6 pb-24">
-        {/* iOS Dynamic Island / Status area styling decoration & Ledger Switcher */}
-        <header className="flex items-center justify-between pb-3.5 pt-1">
-          <div className="flex items-center space-x-2">
-            <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-sm transition-all duration-300 ${
-              activeLedger === "shared"
-                ? "bg-gradient-to-tr from-pink-500 to-rose-500 shadow-rose-500/30"
-                : "bg-ios-blue shadow-ios-blue/30"
-            }`}>
+      <div
+        className="w-full max-w-lg min-h-screen flex flex-col relative px-4 sm:px-6 pb-24"
+        style={{
+          paddingTop: "max(env(safe-area-inset-top, 0px) + 12px, 28px)",
+        }}
+      >
+        {/* iOS Top Bar: Brand, Currency & Theme */}
+        <header className="flex items-center justify-between pb-3">
+          <div className="flex items-center space-x-2.5">
+            <div
+              className={`w-9 h-9 rounded-2xl flex items-center justify-center text-white shadow-sm transition-all duration-300 ${
+                activeLedger === "shared"
+                  ? "bg-gradient-to-tr from-pink-500 to-rose-500 shadow-rose-500/30"
+                  : "bg-ios-blue shadow-ios-blue/30"
+              }`}
+            >
               {activeLedger === "shared" ? (
-                <Heart className="w-4 h-4 fill-current" />
+                <Heart className="w-5 h-5 fill-current" />
               ) : (
-                <Wallet className="w-4 h-4" />
+                <Wallet className="w-5 h-5" />
               )}
             </div>
             <div>
-              <div className="flex items-center space-x-1.5">
-                <span className="text-base font-bold tracking-tight">
-                  {activeLedger === "shared" ? "情侣共享" : "个人私密"}
+              <div className="flex items-center space-x-2">
+                <span className="text-lg font-bold tracking-tight">
+                  {activeLedger === "shared" ? "恋爱生活账本" : "极简记账"}
                 </span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-ios-gray-5 dark:bg-ios-gray-dark4 text-ios-gray-1 font-mono uppercase">
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-ios-gray-5 dark:bg-ios-gray-dark4 text-ios-gray-1 font-mono uppercase font-semibold">
                   {baseCurrency}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Central / Right Controls: Ledger Switcher + Theme */}
-          <div className="flex items-center space-x-2">
-            {/* iOS Segmented Pill Switcher */}
-            <div className="flex items-center bg-ios-gray-5 dark:bg-ios-gray-dark4 p-1 rounded-2xl border border-black/[0.04] dark:border-white/[0.08]">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveLedger("personal");
-                  haptics.selection();
-                }}
-                className={`flex items-center space-x-1 px-2.5 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                  activeLedger === "personal"
-                    ? "bg-white dark:bg-ios-gray-dark2 text-ios-blue shadow-sm"
-                    : "text-ios-gray-1 dark:text-ios-gray-2 hover:text-black dark:hover:text-white"
-                }`}
-              >
-                <User className="w-3 h-3" />
-                <span>个人</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveLedger("shared");
-                  haptics.selection();
-                  sharedLedger.reloadSettlement();
-                }}
-                className={`flex items-center space-x-1 px-2.5 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                  activeLedger === "shared"
-                    ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-sm"
-                    : "text-ios-gray-1 dark:text-ios-gray-2 hover:text-black dark:hover:text-white"
-                }`}
-              >
-                <Heart className="w-3 h-3 fill-current" />
-                <span>共享</span>
-              </button>
-            </div>
-
-            {/* Quick theme switcher button */}
-            <button
-              type="button"
-              onClick={() => {
-                const nextTheme =
-                  theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
-                setTheme(nextTheme);
-                haptics.selection();
-              }}
-              className="w-8 h-8 rounded-full bg-white dark:bg-ios-gray-dark3 shadow-sm border border-black/5 dark:border-white/10 flex items-center justify-center text-ios-gray-1 hover:text-black dark:hover:text-white cursor-pointer transition-colors"
-              title="切换主题"
-            >
-              {theme === "light" ? (
-                <Sun className="w-4 h-4 text-orange-500" />
-              ) : theme === "dark" ? (
-                <Moon className="w-4 h-4 text-ios-blue" />
-              ) : (
-                <Laptop className="w-4 h-4 text-ios-gray-1" />
-              )}
-            </button>
-          </div>
+          {/* Right Action: Quick theme switcher */}
+          <button
+            type="button"
+            onClick={() => {
+              const nextTheme =
+                theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
+              setTheme(nextTheme);
+              haptics.selection();
+            }}
+            className="w-9 h-9 rounded-full bg-white dark:bg-ios-gray-dark3 shadow-sm border border-black/5 dark:border-white/10 flex items-center justify-center text-ios-gray-1 hover:text-black dark:hover:text-white cursor-pointer transition-colors"
+            title="切换外观"
+          >
+            {theme === "light" ? (
+              <Sun className="w-4 h-4 text-orange-500" />
+            ) : theme === "dark" ? (
+              <Moon className="w-4 h-4 text-ios-blue" />
+            ) : (
+              <Laptop className="w-4 h-4 text-ios-gray-1" />
+            )}
+          </button>
         </header>
+
+        {/* Dedicated iOS Segmented Control for Ledger Switch (Full width, easy touch target) */}
+        <div className="mb-4 bg-ios-gray-5 dark:bg-ios-gray-dark4 p-1 rounded-2xl flex items-center border border-black/[0.04] dark:border-white/[0.06]">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveLedger("personal");
+              haptics.selection();
+            }}
+            className={`flex-1 py-2 rounded-xl text-sm font-semibold flex items-center justify-center space-x-1.5 transition-all duration-200 cursor-pointer ${
+              activeLedger === "personal"
+                ? "bg-white dark:bg-ios-gray-dark2 text-ios-blue shadow-sm font-bold"
+                : "text-ios-gray-1 dark:text-ios-gray-2 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <User className="w-4 h-4" />
+            <span>个人私密账本</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveLedger("shared");
+              haptics.selection();
+              sharedLedger.reloadSettlement();
+            }}
+            className={`flex-1 py-2 rounded-xl text-sm font-semibold flex items-center justify-center space-x-1.5 transition-all duration-200 cursor-pointer ${
+              activeLedger === "shared"
+                ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-sm font-bold"
+                : "text-ios-gray-1 dark:text-ios-gray-2 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <Heart className="w-4 h-4 fill-current" />
+            <span>恋爱共享账本</span>
+          </button>
+        </div>
 
         {/* Main Tab Views with Smooth Transition */}
         <main className="flex-1">

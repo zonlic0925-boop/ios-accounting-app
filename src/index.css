@@ -51,6 +51,15 @@
   transition: transform 0.12s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Safe Area Support for iOS */
+.pt-safe {
+  padding-top: max(env(safe-area-inset-top, 0px), 16px);
+}
+
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
+}
+
 /* Custom Scrollbar for sleek appearance */
 ::-webkit-scrollbar {
   width: 0px;
