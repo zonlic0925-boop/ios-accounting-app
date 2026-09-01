@@ -12,6 +12,7 @@ export interface Transaction {
   ownerName?: string;         // 记账人当时的称呼快照 (便于云端查看)
   settlementBy?: "me" | "partner"; // 仅结算记录使用: 相对记录创建者, 谁交付的这笔款
   syncStatus?: "synced" | "pending"; // 云端同步状态: 'synced' | 'pending'
+  deletedAt?: number;         // 软删除时间戳: 非空表示已删除, 删除操作随云端同步, 对端据此清理副本
   title: string;
   amount: number;             // 原始金额 (Original amount)
   currency: string;           // 交易币种 (Transaction currency code, e.g. "USD", "JPY", "CNY")

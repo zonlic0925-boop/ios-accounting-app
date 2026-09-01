@@ -67,6 +67,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [myNickname, setMyNickname] = useState(syncService.getMyNickname());
   const [partnerNickname, setPartnerNickname] = useState(syncService.getPartnerNickname());
 
+  const lastSyncAt = syncService.getLastSyncAt();
+  const lastSyncLabel = lastSyncAt
+    ? `上次对齐：${new Date(lastSyncAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}。`
+    : "本机尚未与云端对齐过。";
+
   const handleSaveNicknames = () => {
     syncService.setMyNickname(myNickname);
     syncService.setPartnerNickname(partnerNickname);
@@ -132,11 +137,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const handleLeaveRoom = () => {
+  const [isLeaving, setIsLeaving] = useState(false);
+
+  const handleLeaveRoom = async () => {
+    if (isLeaving) return;
+    if (!window.confirm("退出后本机将清空恋爱共享账目的本地副本，云端记录保留。确定退出？")) {
+      return;
+    }
     haptics.medium();
-    syncService.leaveRoom();
-    setRoomId(null);
-    setSyncStatusMsg("已退出共享账本");
+    setIsLeaving(true);
+    try {
+      const removed = await syncService.leaveRoom();
+      setRoomId(null);
+      setSyncStatusMsg(`已退出共享账本，本机清除 ${removed} 笔共享流水`);
+      window.setTimeout(() => setSyncStatusMsg(""), 6000);
+    } finally {
+      setIsLeaving(false);
+    }
   };
 
   const handleCopyCode = () => {
@@ -281,13 +298,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <button
                   type="button"
                   onClick={handleLeaveRoom}
-                  className="px-3.5 py-2.5 rounded-2xl bg-ios-gray-5 dark:bg-ios-gray-dark4 text-ios-red text-xs font-semibold flex items-center justify-center space-x-1 hover:bg-ios-red/10 transition-all cursor-pointer"
+                  disabled={isLeaving}
+                  className="px-3.5 py-2.5 rounded-2xl bg-ios-gray-5 dark:bg-ios-gray-dark4 text-ios-red text-xs font-semibold flex items-center justify-center space-x-1 hover:bg-ios-red/10 transition-all cursor-pointer disabled:opacity-50"
                   title="断开配对"
                 >
                   <LogOut className="w-3.5 h-3.5" />
-                  <span>退出</span>
+                  <span>{isLeaving ? "退出中..." : "退出"}</span>
                 </button>
               </div>
+
+              <p className="text-[10px] text-ios-gray-2 leading-relaxed">
+                「立即云对齐」= 手动把本机新记的账目上传云端，并拉取对方的新账目；应用打开时每
+                15 秒也会自动对齐一次，切回应用瞬间同样自动对齐。{lastSyncLabel}
+              </p>
             </div>
           ) : (
             /* Unpaired State */

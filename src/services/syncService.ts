@@ -11,10 +11,12 @@ type SyncListener = (result: SyncResult) => void;
 
 const MY_NICK_STORAGE = "ios_finance_my_nickname";
 const PARTNER_NICK_STORAGE = "ios_finance_partner_name";
+const LAST_SYNC_STORAGE = "ios_finance_last_sync_at";
 
 class SyncService {
   private syncTimer: any = null;
   private listeners: Set<SyncListener> = new Set();
+  private syncing: Promise<SyncResult> | null = null;
 
   public getRoomId(): string | null {
     return localStorage.getItem("ios_finance_shared_room_id");
@@ -130,25 +132,52 @@ class SyncService {
   }
 
   /**
-   * Leave shared room
+   * Leave shared room and purge every local copy of the shared ledger.
+   * The room itself (and its history) stays in the cloud, so rejoining with
+   * the same pairing code restores the full record; this device simply
+   * returns to a clean personal ledger.
    */
-  public leaveRoom(): void {
+  public async leaveRoom(): Promise<number> {
     this.setRoomId(null);
+    const removed = await db.transactions
+      .filter((t) => (t.ledgerId || "personal") === "shared")
+      .toArray();
+    await db.transactions.bulkDelete(removed.map((t) => t.id!));
+    return removed.length;
+  }
+
+  /** Timestamp (ms) of the last successful cloud sync on this device. */
+  public getLastSyncAt(): number {
+    return Number(localStorage.getItem(LAST_SYNC_STORAGE) || 0);
+  }
+
+  private setLastSyncAt(ts: number): void {
+    localStorage.setItem(LAST_SYNC_STORAGE, String(ts));
   }
 
   /**
-   * Trigger immediate bidirectional sync
+   * Trigger immediate bidirectional sync.
+   * Concurrent calls (15s timer + visibilitychange + manual press) collapse
+   * into one in-flight request so the cloud never sees overlapping merges.
    */
   public async syncNow(): Promise<SyncResult> {
+    if (this.syncing) return this.syncing;
+    this.syncing = this.runSyncCycle().finally(() => {
+      this.syncing = null;
+    });
+    return this.syncing;
+  }
+
+  private async runSyncCycle(): Promise<SyncResult> {
     const roomId = this.getRoomId();
     if (!roomId) return { success: false, message: "未加入任何共享账本" };
 
     try {
       const ownerKey = this.getOwnerKey();
 
-      // 1. Collect pending local shared transactions
+      // 1. Collect pending local shared transactions (including delete tombstones)
       const localSharedTxs = await db.transactions
-        .filter((t) => t.ledgerId === "shared")
+        .filter((t) => t.ledgerId === "shared" && t.syncStatus === "pending")
         .toArray();
 
       // 1b. Stamp ownership: whoever records (and pays) it owns it
@@ -190,6 +219,15 @@ class SyncService {
         const key = rTx.remoteId || `${rTx.date}_${rTx.amount}_${rTx.note}_${rTx.createdAt}`;
         const existing = await db.transactions.where("remoteId").equals(key).first();
 
+        if (rTx.deletedAt) {
+          // Remote tombstone: drop our local copy of this shared record
+          if (existing) {
+            await db.transactions.delete(existing.id!);
+            updatedCount++;
+          }
+          continue;
+        }
+
         if (!existing) {
           // Add new from partner; strip the remote device's auto-increment id so Dexie assigns our own
           const { id, ...cleanTx } = rTx;
@@ -219,7 +257,7 @@ class SyncService {
         }
       }
 
-      // 4. Our own pending records made it to the cloud; flip them to synced
+      // 4. Our own pending records (pushes & tombstones) made it to the cloud; flip them to synced
       const pendingCount = await db.transactions
         .filter((t) => t.ledgerId === "shared" && t.syncStatus === "pending")
         .count();
@@ -229,11 +267,27 @@ class SyncService {
           .modify({ syncStatus: "synced" });
       }
 
+      // 5. A full pull means our local list should mirror the cloud exactly;
+      // purge any local record the cloud no longer knows (e.g. partner deleted it
+      // while this device was offline for the tombstone push).
+      const remoteKeys = new Set(
+        remoteTxs.map((r) => r.remoteId || `${r.date}_${r.amount}_${r.note}_${r.createdAt}`)
+      );
+      const localShared = await db.transactions
+        .filter((t) => t.ledgerId === "shared" && t.syncStatus !== "pending")
+        .toArray();
+      const staleLocal = localShared.filter((t) => t.remoteId && !remoteKeys.has(t.remoteId));
+      if (staleLocal.length > 0) {
+        await db.transactions.bulkDelete(staleLocal.map((t) => t.id!));
+        updatedCount += staleLocal.length;
+      }
+
       const result: SyncResult = {
         success: true,
         syncedCount: updatedCount,
         message: "同步成功",
       };
+      this.setLastSyncAt(Date.now());
       if (updatedCount > 0) this.emit(result);
       return result;
     } catch (err: any) {

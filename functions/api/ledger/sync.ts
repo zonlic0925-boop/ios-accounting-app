@@ -41,7 +41,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       txMap.set(key, tx);
     }
 
-    // Merge incoming, picking newer updatedAt
+    // Merge incoming, picking newer updatedAt.
+    // The remoteId is the merge key and must stay stable: a deletion tombstone
+    // carries the record's original remoteId + deletedAt so every partner device
+    // can identify and remove its copy instead of treating it as a new record.
     for (const inTx of incoming) {
       const key = inTx.remoteId || `${inTx.date}_${inTx.amount}_${inTx.note}_${inTx.createdAt}`;
       const prev = txMap.get(key);

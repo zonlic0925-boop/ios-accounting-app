@@ -255,7 +255,11 @@ export function App() {
                     await sharedLedger.settleUp();
                     await refreshAll();
                   }}
-                  onDeleteTransaction={deleteTransaction}
+                  onDeleteTransaction={async (id) => {
+                    await deleteTransaction(id);
+                    await refreshAll();
+                    await sharedLedger.reloadSettlement();
+                  }}
                   onOpenQuickAdd={handleOpenQuickAdd}
                 />
               </motion.div>
@@ -427,6 +431,11 @@ export function App() {
             await addTransaction(tx);
             await refreshAll();
             await sharedLedger.reloadSettlement();
+            // Shared record: push to the cloud immediately so the partner's
+            // next pull (theirs runs on the same cadence) sees it at once.
+            if (tx.ledgerId === "shared" && syncService.getRoomId()) {
+              syncService.syncNow().catch(() => {});
+            }
           }}
           initialType={quickAddType}
         />

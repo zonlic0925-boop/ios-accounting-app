@@ -211,12 +211,24 @@ export class DataRepository {
   }
 
   /**
-   * Delete a transaction and rollback account balance
+   * Delete a transaction and rollback account balance.
+   * Shared-ledger records are soft-deleted instead: the tombstone syncs to the
+   * cloud so the partner's device removes its copy too, rather than re-pulling
+   * the "deleted" record forever.
    */
   public async deleteTransaction(id: number): Promise<void> {
     await db.transaction("rw", [db.transactions, db.accounts], async () => {
       const tx = await db.transactions.get(id);
       if (!tx) return;
+
+      if ((tx.ledgerId || "personal") === "shared") {
+        await db.transactions.update(id, {
+          deletedAt: Date.now(),
+          syncStatus: "pending",
+          updatedAt: Date.now(),
+        });
+        return;
+      }
 
       const account = await db.accounts.get(tx.accountId);
       if (account) {
@@ -304,6 +316,8 @@ export class DataRepository {
     let collection = db.transactions.orderBy("date").reverse();
 
     let items = await collection.toArray();
+    // Soft-deleted shared records are tombstones kept only for sync bookkeeping
+    items = items.filter((t) => !t.deletedAt);
 
     if (filter) {
       if (filter.ledgerId) {
@@ -563,7 +577,7 @@ export class DataRepository {
   public async getSharedSettlementSummary(): Promise<SharedSettlementSummary> {
     const baseCurrency = await this.getBaseCurrency();
     const sharedTxs = await db.transactions
-      .filter((t) => (t.ledgerId || "personal") === "shared")
+      .filter((t) => (t.ledgerId || "personal") === "shared" && !t.deletedAt)
       .toArray();
 
     let totalSharedExpense = 0;

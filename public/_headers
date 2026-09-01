@@ -1,0 +1,14 @@
+# Cloudflare Pages custom headers
+
+# index.html is the PWA entry: iOS Web App views cache it aggressively, so it
+# must always revalidate — otherwise partner devices keep booting a stale
+# bundle and never see each other's synced transactions.
+/index.html
+  Cache-Control: no-cache
+
+# Vite emits content-hashed asset filenames, so these are safe to cache hard.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/manifest.json
+  Cache-Control: no-cache
