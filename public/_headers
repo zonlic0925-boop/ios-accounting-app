@@ -4,11 +4,16 @@
 # must always revalidate — otherwise partner devices keep booting a stale
 # bundle and never see each other's synced transactions.
 /index.html
-  Cache-Control: no-cache
+  Cache-Control: no-cache, no-store, must-revalidate
 
 # Vite emits content-hashed asset filenames, so these are safe to cache hard.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
 /manifest.json
-  Cache-Control: no-cache
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# /api/* responses must never be served from any cache layer; sync POSTs
+# have to hit the worker on every call or devices never see each other.
+/api/*
+  Cache-Control: no-cache, no-store, must-revalidate

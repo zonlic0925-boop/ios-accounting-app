@@ -27,12 +27,22 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         transactions: [],
       };
 
-      if (context.env?.SHARED_LEDGER_KV) {
-        await context.env.SHARED_LEDGER_KV.put(`room:${randomCode}`, JSON.stringify(newRoom), {
-          expirationTtl: 60 * 60 * 24 * 365, // 1 year
+      try {
+        if (context.env?.SHARED_LEDGER_KV) {
+          await context.env.SHARED_LEDGER_KV.put(`room:${randomCode}`, JSON.stringify(newRoom), {
+            expirationTtl: 60 * 60 * 24 * 365, // 1 year
+          });
+        } else {
+          memoryRooms.set(randomCode, newRoom);
+        }
+      } catch {
+        return new Response(JSON.stringify({
+          success: false,
+          message: "云端暂时无法创建房间（服务忙或今日配额已满），请稍后再试",
+        }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
         });
-      } else {
-        memoryRooms.set(randomCode, newRoom);
       }
 
       return new Response(JSON.stringify({
@@ -70,10 +80,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           name: "恋爱共享账本",
           transactions: [],
         };
-        if (context.env?.SHARED_LEDGER_KV) {
-          await context.env.SHARED_LEDGER_KV.put(`room:${code}`, JSON.stringify(roomData));
-        } else {
-          memoryRooms.set(code, roomData);
+        try {
+          if (context.env?.SHARED_LEDGER_KV) {
+            await context.env.SHARED_LEDGER_KV.put(`room:${code}`, JSON.stringify(roomData));
+          } else {
+            memoryRooms.set(code, roomData);
+          }
+        } catch {
+          // Join can still succeed for this session; the room record is only
+          // metadata. A quota-limited KV shouldn't block pairing entirely.
         }
       }
 

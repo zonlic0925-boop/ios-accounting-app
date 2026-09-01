@@ -36,3 +36,9 @@ skills-master
 
 # Wrangler local dev state & temp bundles
 .wrangler/
+
+# E2E diagnostics & temp downloads
+.prod_bundle.js
+.prod_new.js
+.prod-index.html
+.*-out.txt

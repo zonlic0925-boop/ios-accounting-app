@@ -71,21 +71,66 @@ export function App() {
     }
     syncService.startAutoSync(15000);
 
+    // Every successful cycle (data changes OR manual no-op align) refreshes
+    // the open views, so the list, settlement card and balances follow the
+    // cloud without a reload.
     const unsub = syncService.onSync(() => {
-      refreshAllRef.current();
+      refreshAllRef.current().catch(() => {});
     });
 
+    // iOS PWA never fires visibilitychange when the user merely switches
+    // apps (Web App views keep `visible`), and `focus` is dropped by iOS
+    // once the web view is foregrounded. Cover all three events, and also
+    // re-align when the page wakes from bfcache (pageshow.persisted), then
+    // probe for silently frozen timers and restart the cadence.
+    let pageHideAt = 0;
+    const onHidden = () => {
+      pageHideAt = Date.now();
+    };
     const onVisible = () => {
       if (document.visibilityState === "visible" && syncService.getRoomId()) {
         syncService.syncNow().catch(() => {});
       }
     };
+    const onFocus = () => {
+      if (syncService.getRoomId()) syncService.syncNow().catch(() => {});
+    };
+    const onPageShow = (e: Event) => {
+      const persisted = (e as PageTransitionEvent).persisted;
+      if (persisted && syncService.getRoomId()) {
+        syncService.syncNow().catch(() => {});
+      }
+    };
+
     document.addEventListener("visibilitychange", onVisible);
+    document.addEventListener("pagehide", onHidden);
+    document.addEventListener("pageshow", onPageShow);
+    window.addEventListener("focus", onFocus);
+
+    // Some iOS Web App views keep running but silently stop firing timers;
+    // when the page had been hidden long enough to span at least one 15s
+    // cycle, do a one-shot alignment instead of relying on the interval.
+    const resumeTimer = setInterval(() => {
+      if (
+        document.visibilityState === "visible" &&
+        !syncService.isSyncing() &&
+        syncService.getRoomId() &&
+        pageHideAt > 0 &&
+        Date.now() - pageHideAt > 15000
+      ) {
+        pageHideAt = 0;
+        syncService.syncNow().catch(() => {});
+      }
+    }, 5000);
 
     return () => {
       syncService.stopAutoSync();
+      clearInterval(resumeTimer);
       unsub();
       document.removeEventListener("visibilitychange", onVisible);
+      document.removeEventListener("pagehide", onHidden);
+      document.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("focus", onFocus);
     };
   }, []);
 

@@ -17,6 +17,7 @@ class SyncService {
   private syncTimer: any = null;
   private listeners: Set<SyncListener> = new Set();
   private syncing: Promise<SyncResult> | null = null;
+  private leaving = false;
 
   public getRoomId(): string | null {
     return localStorage.getItem("ios_finance_shared_room_id");
@@ -67,7 +68,9 @@ class SyncService {
 
   /**
    * Subscribe to completed sync cycles; returns an unsubscribe function.
-   * Fired only on success with at least one locally applied change.
+   * Fired on every successful cycle — including pulls that change nothing —
+   * so views can also refresh after a no-op manual align. Also fired after
+   * leaveRoom purges local shared rows.
    */
   public onSync(listener: SyncListener): () => void {
     this.listeners.add(listener);
@@ -75,7 +78,8 @@ class SyncService {
   }
 
   private emit(result: SyncResult): void {
-    for (const fn of this.listeners) {
+    const fns = Array.from(this.listeners);
+    for (const fn of fns) {
       try {
         fn(result);
       } catch {
@@ -89,7 +93,7 @@ class SyncService {
    */
   public async createRoom(roomName: string = "恋爱共享账本"): Promise<{ success: boolean; roomId?: string; message: string }> {
     try {
-      const res = await fetch("/api/ledger/room", {
+      const res = await this.fetchWithRetry("/api/ledger/room", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "create", name: roomName }),
@@ -114,7 +118,7 @@ class SyncService {
     if (!trimmed) return { success: false, message: "请输入有效的配对码" };
 
     try {
-      const res = await fetch("/api/ledger/room", {
+      const res = await this.fetchWithRetry("/api/ledger/room", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "join", roomId: trimmed }),
@@ -132,18 +136,53 @@ class SyncService {
   }
 
   /**
+   * Fetch with one retry on transient server errors (5xx). Cloudflare Pages
+   * Functions cold starts occasionally 500 the first request of a burst; a
+   * single short-delay retry almost always lands on a warm isolate.
+   */
+  private async fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+    let res: Response | null = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      res = await fetch(url, init);
+      if (res.ok || res.status < 500) return res;
+      await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+    }
+    return res!;
+  }
+
+  /**
    * Leave shared room and purge every local copy of the shared ledger.
    * The room itself (and its history) stays in the cloud, so rejoining with
    * the same pairing code restores the full record; this device simply
-   * returns to a clean personal ledger.
+   * returns to a clean personal ledger. Fires the sync listener so open
+   * views drop the purged rows immediately, without waiting for a reload.
    */
   public async leaveRoom(): Promise<number> {
-    this.setRoomId(null);
-    const removed = await db.transactions
-      .filter((t) => (t.ledgerId || "personal") === "shared")
-      .toArray();
-    await db.transactions.bulkDelete(removed.map((t) => t.id!));
-    return removed.length;
+    // Block new sync cycles first: a pull racing this purge would re-download
+    // the shared rows (now marked "stale local") and resurrect them.
+    this.leaving = true;
+    try {
+      this.setRoomId(null);
+      // Let any in-flight cycle (e.g. an auto-pull that was already past its
+      // roomId check when the user tapped 退出) settle BEFORE purging — its
+      // late upsert is exactly what resurrected rows in the field. Cycles
+      // starting after this point see no roomId and touch nothing.
+      if (this.syncing) {
+        try {
+          await this.syncing;
+        } catch {
+          // In-flight failure is irrelevant; we purge below regardless.
+        }
+      }
+      const removed = await db.transactions
+        .filter((t) => (t.ledgerId || "personal") === "shared")
+        .toArray();
+      await db.transactions.bulkDelete(removed.map((t) => t.id!));
+      this.emit({ success: true, message: "已退出共享账本", syncedCount: 0 });
+      return removed.length;
+    } finally {
+      this.leaving = false;
+    }
   }
 
   /** Timestamp (ms) of the last successful cloud sync on this device. */
@@ -157,18 +196,36 @@ class SyncService {
 
   /**
    * Trigger immediate bidirectional sync.
-   * Concurrent calls (15s timer + visibilitychange + manual press) collapse
-   * into one in-flight request so the cloud never sees overlapping merges.
+   * Concurrent calls (15s timer + visibilitychange + manual press) never
+   * overlap: each call chains after any in-flight cycle so every caller —
+   * especially a manual 立即云对齐 — runs its own fresh read/push instead of
+   * receiving a snapshot that was captured before it was pressed.
    */
   public async syncNow(): Promise<SyncResult> {
-    if (this.syncing) return this.syncing;
+    if (this.syncing) {
+      const prev = this.syncing;
+      this.syncing = prev
+        .then(() => this.runSyncCycle())
+        .finally(() => {
+          this.syncing = null;
+        });
+      return this.syncing;
+    }
     this.syncing = this.runSyncCycle().finally(() => {
       this.syncing = null;
     });
     return this.syncing;
   }
 
+  /** True when a sync cycle is in flight (auto pull, manual align, or push). */
+  public isSyncing(): boolean {
+    return this.syncing !== null;
+  }
+
   private async runSyncCycle(): Promise<SyncResult> {
+    if (this.leaving) {
+      return { success: false, message: "正在退出共享账本" };
+    }
     const roomId = this.getRoomId();
     if (!roomId) return { success: false, message: "未加入任何共享账本" };
 
@@ -192,8 +249,8 @@ class SyncService {
         }
       }
 
-      // 2. Call cloudflare pages function
-      const res = await fetch("/api/ledger/sync", {
+      // 2. Call cloudflare pages function (retries transient 5xx from cold starts)
+      const res = await this.fetchWithRetry("/api/ledger/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -208,6 +265,12 @@ class SyncService {
 
       const data = await res.json();
       if (!data.success || !Array.isArray(data.transactions)) {
+        // kvError means the cloud answered but could not persist our pending
+        // rows (e.g. daily KV write quota) — keep them "pending" so the next
+        // cycle retries instead of pretending they made it.
+        if (data.kvError) {
+          return { success: false, message: data.message || "云端暂时无法写入，稍后自动重试" };
+        }
         return { success: false, message: data.message || "同步失败" };
       }
 
@@ -257,14 +320,15 @@ class SyncService {
         }
       }
 
-      // 4. Our own pending records (pushes & tombstones) made it to the cloud; flip them to synced
-      const pendingCount = await db.transactions
-        .filter((t) => t.ledgerId === "shared" && t.syncStatus === "pending")
-        .count();
-      if (pendingCount > 0) {
-        await db.transactions
-          .filter((t) => t.ledgerId === "shared" && t.syncStatus === "pending")
-          .modify({ syncStatus: "synced" });
+      // 4. Flip to synced ONLY the records this cycle actually pushed to the
+      // cloud. Anything recorded while this cycle was in flight keeps its
+      // "pending" marker so the next cycle pushes it — marking all pending
+      // rows here would silently strand mid-cycle records as local-only.
+      const pushedIds = localSharedTxs
+        .map((t) => t.id!)
+        .filter((id) => id !== undefined);
+      if (pushedIds.length > 0) {
+        await db.transactions.where(":id").anyOf(pushedIds).modify({ syncStatus: "synced" });
       }
 
       // 5. A full pull means our local list should mirror the cloud exactly;
@@ -288,7 +352,7 @@ class SyncService {
         message: "同步成功",
       };
       this.setLastSyncAt(Date.now());
-      if (updatedCount > 0) this.emit(result);
+      this.emit(result);
       return result;
     } catch (err: any) {
       return { success: false, message: err.message || "同步异常" };

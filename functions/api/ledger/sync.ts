@@ -55,11 +55,32 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const mergedList = Array.from(txMap.values());
 
-    // Save back
-    if (context.env?.SHARED_LEDGER_KV) {
-      await context.env.SHARED_LEDGER_KV.put(`transactions:${roomId}`, JSON.stringify(mergedList));
-    } else {
-      memoryStore.set(roomId, mergedList);
+    // Persist only when the room data actually changed. Two phones polling
+    // every 15s would otherwise burn the free KV tier's ~1000 writes/day on
+    // no-op cycles within hours and permanently break sync.
+    const changed = JSON.stringify(mergedList) !== JSON.stringify(existingTransactions);
+    if (changed) {
+      if (context.env?.SHARED_LEDGER_KV) {
+        try {
+          await context.env.SHARED_LEDGER_KV.put(`transactions:${roomId}`, JSON.stringify(mergedList));
+        } catch (kvErr: any) {
+          // Daily write quota exhausted (or KV transiently unavailable):
+          // still answer with the merged view so clients can at least read,
+          // and tell them their pending rows did NOT reach durable storage.
+          return new Response(JSON.stringify({
+            success: false,
+            roomId,
+            serverTime: Date.now(),
+            transactions: mergedList,
+            message: "云端写入失败，请稍后再试（数据暂存于本次会话）",
+            kvError: true,
+          }), {
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      } else {
+        memoryStore.set(roomId, mergedList);
+      }
     }
 
     // Filter transactions to return (all transactions for the shared room)
