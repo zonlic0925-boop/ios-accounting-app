@@ -677,7 +677,7 @@ export class DataRepository {
       categoryColor: "#FF2D55",
       accountId: primaryAccount.id,
       date: today,
-      note: note || `甜蜜同步：生活小默契归位 ${summary.baseCurrency} ${summary.owesAmount} ✨`,
+      note: note || `甜蜜同步：生活小默契已对齐 ✨`,
       syncStatus: "pending",
       createdAt: now,
       updatedAt: now,

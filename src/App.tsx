@@ -69,7 +69,7 @@ export function App() {
     if (syncService.getRoomId()) {
       syncService.syncNow().catch(() => {});
     }
-    syncService.startAutoSync(15000);
+    syncService.startAutoSync(3000);
 
     // Every successful cycle (data changes OR manual no-op align) refreshes
     // the open views, so the list, settlement card and balances follow the
@@ -108,7 +108,7 @@ export function App() {
     window.addEventListener("focus", onFocus);
 
     // Some iOS Web App views keep running but silently stop firing timers;
-    // when the page had been hidden long enough to span at least one 15s
+    // when the page had been hidden long enough to span at least one 3s
     // cycle, do a one-shot alignment instead of relying on the interval.
     const resumeTimer = setInterval(() => {
       if (
@@ -116,7 +116,7 @@ export function App() {
         !syncService.isSyncing() &&
         syncService.getRoomId() &&
         pageHideAt > 0 &&
-        Date.now() - pageHideAt > 15000
+        Date.now() - pageHideAt > 3000
       ) {
         pageHideAt = 0;
         syncService.syncNow().catch(() => {});

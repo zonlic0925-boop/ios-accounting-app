@@ -360,9 +360,12 @@ class SyncService {
   }
 
   /**
-   * Start periodic auto sync (e.g. every 15s)
+   * Start periodic auto sync (default every 3s while foregrounded — the D1
+   * free tier's 5M row-reads/day dwarfs the ~300k row-reads/day this burns,
+   * and writes only happen when rows are actually pending). iOS freezes
+   * timers in the background, so the interval costs nothing when suspended.
    */
-  public startAutoSync(intervalMs: number = 15000): void {
+  public startAutoSync(intervalMs: number = 3000): void {
     if (this.syncTimer) clearInterval(this.syncTimer);
     this.syncTimer = setInterval(() => {
       if (this.getRoomId()) {

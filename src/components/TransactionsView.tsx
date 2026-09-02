@@ -217,15 +217,15 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
             <span className="font-medium text-xs text-right">
               {settlementSummary.payerOwesWhom === "settled" ? (
                 <span className="text-rose-500 font-semibold flex items-center space-x-1">
-                  <span>心有灵犀，刚刚好 🥰</span>
+                  <span>心有灵犀，连账单都刚刚好 🥰</span>
                 </span>
               ) : settlementSummary.payerOwesWhom === "partner_owes_me" ? (
                 <span className="text-rose-500 font-semibold">
-                  {partnerNickname}还差 {formatCurrencyWithCode(settlementSummary.owesAmount, baseCurrency)}，下次让 TA 请客喝奶茶 🥤
+                  {partnerNickname}还差 {formatCurrencyWithCode(settlementSummary.owesAmount, baseCurrency)}，请杯奶茶就默契啦 🧋
                 </span>
               ) : (
                 <span className="text-pink-500 font-semibold">
-                  你多付了 {formatCurrencyWithCode(settlementSummary.owesAmount, baseCurrency)}，{partnerNickname}该补上啦 🎁
+                  你多付了 {formatCurrencyWithCode(settlementSummary.owesAmount, baseCurrency)}，坐等{partnerNickname}甜甜补上 🎁
                 </span>
               )}
             </span>
