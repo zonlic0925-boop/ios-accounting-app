@@ -1,6 +1,7 @@
 import { db, type Transaction, type Category, type Account, type TransactionType, type LedgerId } from "../db";
 import { currencyService, convertAmount, getRate } from "./currency";
 import { syncService } from "./syncService";
+import { foldSharedTotals, classifySettlement } from "./settlement";
 
 export interface TransactionFilter {
   startDate?: string;
@@ -580,60 +581,14 @@ export class DataRepository {
       .filter((t) => (t.ledgerId || "personal") === "shared" && !t.deletedAt)
       .toArray();
 
-    let totalSharedExpense = 0;
-    let totalPaidByMe = 0;
-    let totalPaidByPartner = 0;
-    let myShareAdjustment = 0; // settlement receipts raise my share basis to close the balance
-
-    for (const tx of sharedTxs) {
-      if (tx.type === "expense") {
-        totalSharedExpense += tx.baseAmount;
-        if (syncService.isMine(tx)) {
-          totalPaidByMe += tx.baseAmount;
-        } else {
-          totalPaidByPartner += tx.baseAmount;
-        }
-      } else if (tx.type === "transfer" && tx.categoryId === "settlement") {
-        // Settlement transfer: settlementBy names who handed the money over, relative to the creator.
-        // Giver: paid count rises. Receiver: share basis rises. Both devices must land on the same side.
-        const iAmCreator = syncService.isMine(tx);
-        const creatorGave = tx.settlementBy ? tx.settlementBy === "me" : iAmCreator;
-        const iGave = iAmCreator ? creatorGave : !creatorGave;
-        if (iGave) {
-          totalPaidByMe += tx.baseAmount;
-        } else {
-          myShareAdjustment += tx.baseAmount;
-        }
-      }
-    }
-
-    // Each side owes half of the total; whoever paid more is owed the difference
-    const half = totalSharedExpense / 2;
-    const myTotalShare = half + myShareAdjustment;
-    const partnerTotalShare = half;
-
-    // netBalance = What I paid - my half
-    // If netBalance > 0: I paid more than my share => partner owes me
-    // If netBalance < 0: partner paid more => I owe partner
-    const netBalance = Number((totalPaidByMe - myTotalShare).toFixed(2));
-    const owesAmount = Math.abs(netBalance);
-
-    let payerOwesWhom: "partner_owes_me" | "i_owe_partner" | "settled" = "settled";
-    if (netBalance > 0.05) {
-      payerOwesWhom = "partner_owes_me";
-    } else if (netBalance < -0.05) {
-      payerOwesWhom = "i_owe_partner";
-    }
+    const totals = foldSharedTotals(sharedTxs, (tx) => syncService.isMine(tx));
+    const verdict = classifySettlement(totals);
 
     return {
-      totalSharedExpense: Number(totalSharedExpense.toFixed(2)),
-      totalPaidByMe: Number(totalPaidByMe.toFixed(2)),
-      totalPaidByPartner: Number(totalPaidByPartner.toFixed(2)),
-      myTotalShare: Number(myTotalShare.toFixed(2)),
-      partnerTotalShare: Number(partnerTotalShare.toFixed(2)),
-      netBalance,
-      payerOwesWhom,
-      owesAmount: Number(owesAmount.toFixed(2)),
+      totalSharedExpense: Number(totals.totalSharedExpense.toFixed(2)),
+      totalPaidByMe: Number(totals.totalPaidByMe.toFixed(2)),
+      totalPaidByPartner: Number(totals.totalPaidByPartner.toFixed(2)),
+      ...verdict,
       baseCurrency,
     };
   }

@@ -225,7 +225,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                 </span>
               ) : (
                 <span className="text-pink-500 font-semibold">
-                  你多付了 {formatCurrencyWithCode(settlementSummary.owesAmount, baseCurrency)}，坐等{partnerNickname}甜甜补上 🎁
+                  你少付了 {formatCurrencyWithCode(settlementSummary.owesAmount, baseCurrency)}，快给{partnerNickname}甜甜补上 🎁
                 </span>
               )}
             </span>
