@@ -9,15 +9,18 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
 } from "lucide-react";
-import type { Transaction, Category } from "../db";
+import type { Transaction, Category, LedgerId } from "../db";
 import { CategoryIcon } from "./CategoryIcon";
 import { formatCurrencyWithCode } from "../services/currency";
+import { syncService } from "../services/syncService";
 import { haptics } from "../lib/haptics";
 
 interface AnalyticsViewProps {
   transactions: Transaction[];
   categories: Category[];
   baseCurrency: string;
+  /** Which ledger the passed transactions belong to; shared enables the per-partner breakdown. */
+  ledgerId?: LedgerId;
 }
 
 type TimeDimension = "week" | "month" | "year";
@@ -26,6 +29,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   transactions,
   categories,
   baseCurrency,
+  ledgerId,
 }) => {
   const [dimension, setDimension] = useState<TimeDimension>("month");
   const [activeType, setActiveType] = useState<"expense" | "income">("expense");
@@ -97,6 +101,41 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   }, [periodTransactions, activeType]);
 
   const activeTotal = activeType === "expense" ? totalExpense : totalIncome;
+
+  // Shared ledger: how much each partner paid in this period (expenses only;
+  // recording equals paying, same ownership model as the settlement engine).
+  const isSharedLedger = ledgerId === "shared";
+  const partnerStats = useMemo(() => {
+    const myNickname = syncService.getMyNickname();
+    const partnerNickname = syncService.getPartnerNickname();
+    let mine = 0;
+    let partner = 0;
+    let myCount = 0;
+    let partnerCount = 0;
+    periodTransactions.forEach((tx) => {
+      if (tx.type !== "expense") return;
+      const amt = tx.baseAmount !== undefined ? tx.baseAmount : tx.amount;
+      if (syncService.isMine(tx)) {
+        mine += amt;
+        myCount += 1;
+      } else {
+        partner += amt;
+        partnerCount += 1;
+      }
+    });
+    const total = mine + partner;
+    return {
+      myNickname,
+      partnerNickname,
+      mine,
+      partner,
+      myCount,
+      partnerCount,
+      total,
+      myPct: total > 0 ? (mine / total) * 100 : 0,
+      partnerPct: total > 0 ? (partner / total) * 100 : 0,
+    };
+  }, [periodTransactions]);
 
   // Category Breakdown
   const categoryStats = useMemo(() => {
@@ -347,6 +386,58 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           </p>
         </div>
       </div>
+
+      {/* Shared Ledger: Per-Partner Spending Breakdown */}
+      {isSharedLedger && (
+        <div className="bg-gradient-to-br from-rose-500/10 via-pink-500/5 to-purple-500/10 dark:from-rose-500/20 dark:via-purple-500/10 dark:to-pink-500/20 rounded-3xl p-4 shadow-ios-card border border-rose-500/20 dark:border-rose-500/30 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-1.5">
+              <span className="text-sm">💗💞</span>
+              <h3 className="text-xs sm:text-sm font-bold text-black dark:text-white">双方出账对比</h3>
+            </div>
+            <span className="text-[11px] text-ios-gray-1 font-mono">
+              共同支出 {formatCurrencyWithCode(partnerStats.total, baseCurrency)}
+            </span>
+          </div>
+
+          {/* Two-segment share bar: rose = mine, purple = partner's (same colors as the ownership badges) */}
+          <div className="flex h-2.5 rounded-full overflow-hidden bg-white/60 dark:bg-white/10">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${partnerStats.myPct}%` }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+              className="h-full bg-rose-500"
+            />
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${partnerStats.partnerPct}%` }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+              className="h-full bg-purple-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="bg-white/70 dark:bg-[#1C1C1E]/70 p-2.5 rounded-2xl border border-black/[0.03] dark:border-white/[0.05]">
+              <span className="text-ios-gray-1 text-[11px]">💗 {partnerStats.myNickname}出的</span>
+              <p className="font-bold text-rose-500 font-mono text-sm mt-0.5">
+                {formatCurrencyWithCode(partnerStats.mine, baseCurrency)}
+              </p>
+              <p className="text-[10px] text-ios-gray-1 mt-0.5">
+                占 {partnerStats.myPct.toFixed(1)}% · {partnerStats.myCount} 笔
+              </p>
+            </div>
+            <div className="bg-white/70 dark:bg-[#1C1C1E]/70 p-2.5 rounded-2xl border border-black/[0.03] dark:border-white/[0.05]">
+              <span className="text-ios-gray-1 text-[11px]">💞 {partnerStats.partnerNickname}出的</span>
+              <p className="font-bold text-purple-500 font-mono text-sm mt-0.5">
+                {formatCurrencyWithCode(partnerStats.partner, baseCurrency)}
+              </p>
+              <p className="text-[10px] text-ios-gray-1 mt-0.5">
+                占 {partnerStats.partnerPct.toFixed(1)}% · {partnerStats.partnerCount} 笔
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Smooth Bezier Trend Chart Card */}
       <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl p-4 sm:p-5 shadow-ios-card border border-black/[0.04] dark:border-white/[0.06] space-y-3">

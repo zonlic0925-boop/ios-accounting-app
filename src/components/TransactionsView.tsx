@@ -207,29 +207,6 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
               </p>
             </div>
           </div>
-
-          {/* Bottom Net Diff Conclusion Banner */}
-          <div className="bg-white/90 dark:bg-[#1C1C1E]/90 px-3 py-2.5 rounded-2xl flex items-center justify-between text-xs border border-black/[0.04] dark:border-white/[0.06]">
-            <div className="flex items-center space-x-1.5 text-ios-gray-1 shrink-0">
-              <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
-              <span>生活小默契：</span>
-            </div>
-            <span className="font-medium text-xs text-right">
-              {settlementSummary.payerOwesWhom === "settled" ? (
-                <span className="text-rose-500 font-semibold flex items-center space-x-1">
-                  <span>心有灵犀，连账单都刚刚好 🥰</span>
-                </span>
-              ) : settlementSummary.payerOwesWhom === "partner_owes_me" ? (
-                <span className="text-rose-500 font-semibold">
-                  {partnerNickname}还差 {formatCurrencyWithCode(settlementSummary.owesAmount, baseCurrency)}，请杯奶茶就默契啦 🧋
-                </span>
-              ) : (
-                <span className="text-pink-500 font-semibold">
-                  你少付了 {formatCurrencyWithCode(settlementSummary.owesAmount, baseCurrency)}，快给{partnerNickname}甜甜补上 🎁
-                </span>
-              )}
-            </span>
-          </div>
         </div>
       )}
 

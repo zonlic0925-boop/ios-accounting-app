@@ -319,9 +319,10 @@ export function App() {
                 transition={{ duration: 0.18 }}
               >
                 <AnalyticsView
-                  transactions={transactions}
+                  transactions={currentLedgerTransactions}
                   categories={categories}
                   baseCurrency={baseCurrency}
+                  ledgerId={activeLedger}
                 />
               </motion.div>
             )}
