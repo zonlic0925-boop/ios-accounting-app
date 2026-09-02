@@ -698,6 +698,21 @@ export function getPopularCurrencies(): CurrencyInfo[] {
     .map((c) => ({ ...c, name: c.nameZh }));
 }
 
+/**
+ * Curated base-currency options for the settings selector: the world's most
+ * traded currencies plus HKD for the home market. The full 160+ list stays
+ * available for account currencies and conversion targets; the base selector
+ * intentionally shows only these six.
+ */
+export const BASE_CURRENCY_CODES = ["CNY", "HKD", "USD", "EUR", "JPY", "GBP"];
+
+export function getBaseCurrencyOptions(): CurrencyInfo[] {
+  return BASE_CURRENCY_CODES.map((code) => ({
+    ...CURRENCY_METADATA[code],
+    name: CURRENCY_METADATA[code].nameZh,
+  }));
+}
+
 export function convertAmount(
   amount: number,
   fromCurrency: string,

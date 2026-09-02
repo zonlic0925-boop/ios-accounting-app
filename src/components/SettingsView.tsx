@@ -17,10 +17,19 @@ import {
   ArrowRightLeft,
   CheckCircle2,
   LogOut,
+  Mail,
+  Star,
+  Coffee,
+  Code2,
 } from "lucide-react";
-import { getAllCurrencies } from "../services/currency";
+import { getBaseCurrencyOptions, getCurrencyInfo } from "../services/currency";
 import { syncService } from "../services/syncService";
 import { haptics } from "../lib/haptics";
+
+const AUTHOR_NAME = "Zonlic";
+const AUTHOR_BIO = "一个在香港生活的普通人";
+const AUTHOR_EMAIL = "zonlic0925@gmail.com";
+const GITHUB_URL = "https://github.com/zonlic0925-boop/ios-accounting-app";
 
 interface SettingsViewProps {
   baseCurrency: string;
@@ -54,6 +63,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showDonate, setShowDonate] = useState(false);
 
   // Cloud Sync & Couple Room States
   const [roomId, setRoomId] = useState<string | null>(syncService.getRoomId());
@@ -185,7 +195,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   // All supported currencies list
-  const currencyList = getAllCurrencies();
+  // Curated world-major base currencies. If a previously chosen base falls
+  // outside the six (picked before the list was trimmed), append it so the
+  // current selection stays visible and selectable instead of silently
+  // de-highlighting.
+  const baseOptions = getBaseCurrencyOptions();
+  const currencyList = baseOptions.some((c) => c.code === baseCurrency)
+    ? baseOptions
+    : [...baseOptions, getCurrencyInfo(baseCurrency)];
 
   return (
     <div className="space-y-5 pb-20">
@@ -661,6 +678,125 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
 
+      {/* Group 4: About & Support */}
+      <div className="space-y-2">
+        <span className="text-xs font-bold text-ios-gray-1 uppercase tracking-wider px-2">
+          关于与支持
+        </span>
+
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl overflow-hidden shadow-ios-card border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.04] dark:divide-white/[0.04]">
+          {/* Author */}
+          <div className="p-4 flex items-center space-x-3">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-rose-500 to-purple-500 text-white flex items-center justify-center text-lg font-bold shadow-sm shrink-0">
+              Z
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-bold text-black dark:text-white flex items-center gap-1.5">
+                <span>{AUTHOR_NAME}</span>
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-rose-500/10 text-rose-500">
+                  作者
+                </span>
+              </div>
+              <p className="text-xs text-ios-gray-1">{AUTHOR_BIO}</p>
+              <a
+                href={`mailto:${AUTHOR_EMAIL}`}
+                onClick={() => haptics.selection()}
+                className="text-[11px] text-ios-blue inline-flex items-center gap-1 mt-0.5"
+              >
+                <Mail className="w-3 h-3" />
+                {AUTHOR_EMAIL}
+              </a>
+            </div>
+          </div>
+
+          {/* GitHub Star */}
+          <a
+            href={GITHUB_URL}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => haptics.selection()}
+            className="w-full p-4 flex items-center justify-between hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-xl bg-black/5 dark:bg-white/10 text-black dark:text-white flex items-center justify-center">
+                <Code2 className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-black dark:text-white flex items-center gap-1.5">
+                  <span>给项目点个 Star</span>
+                  <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                </div>
+                <p className="text-xs text-ios-gray-1 truncate max-w-[200px]">
+                  觉得好用就支持一下，issue 和 PR 也欢迎
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-ios-gray-2" />
+          </a>
+
+          {/* Donate */}
+          <button
+            type="button"
+            onClick={() => {
+              haptics.selection();
+              setShowDonate((v) => !v);
+            }}
+            className="w-full p-4 flex items-center justify-between hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors cursor-pointer text-left"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+                <Coffee className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-black dark:text-white">
+                  请作者喝杯奶茶 🧋
+                </div>
+                <p className="text-xs text-ios-gray-1">
+                  如果这个 App 帮到了你，欢迎请我喝一杯
+                </p>
+              </div>
+            </div>
+            <ChevronRight
+              className={`w-4 h-4 text-ios-gray-2 transition-transform ${showDonate ? "rotate-90" : ""}`}
+            />
+          </button>
+
+          {showDonate && (
+            <div className="p-4 bg-black/[0.02] dark:bg-white/[0.02] space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <figure className="space-y-1.5">
+                  <a href="/donate-wechat.jpg" target="_blank" rel="noreferrer">
+                    <img
+                      src="/donate-wechat.jpg"
+                      alt="微信收款码"
+                      className="w-full rounded-2xl border border-black/5 dark:border-white/10"
+                    />
+                  </a>
+                  <figcaption className="text-[11px] text-center text-ios-gray-1 font-medium">
+                    微信支付
+                  </figcaption>
+                </figure>
+                <figure className="space-y-1.5">
+                  <a href="/donate-alipay.jpg" target="_blank" rel="noreferrer">
+                    <img
+                      src="/donate-alipay.jpg"
+                      alt="支付宝收款码"
+                      className="w-full rounded-2xl border border-black/5 dark:border-white/10"
+                    />
+                  </a>
+                  <figcaption className="text-[11px] text-center text-ios-gray-1 font-medium">
+                    支付宝
+                  </figcaption>
+                </figure>
+              </div>
+              <p className="text-[11px] text-center text-ios-gray-1">
+                点码可放大，长按或截图即可扫码 · 金额随意，心意最重要 ❤️
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* App Info Card */}
       <div className="bg-white/50 dark:bg-[#1C1C1E]/50 rounded-3xl p-4 text-center space-y-1 border border-black/[0.02] dark:border-white/[0.04]">
         <div className="text-xs font-bold text-black dark:text-white">
@@ -668,6 +804,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
         <p className="text-[11px] text-ios-gray-1">
           Designed with SF Pro & iOS Fluid Glassmorphism
+        </p>
+        <p className="text-[11px] text-ios-gray-1">
+          Crafted with <Heart className="w-3 h-3 text-rose-500 fill-rose-500 inline" /> by{" "}
+          <a
+            href={GITHUB_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="text-ios-blue font-medium"
+          >
+            {AUTHOR_NAME}
+          </a>{" "}
+          in Hong Kong
         </p>
       </div>
     </div>
