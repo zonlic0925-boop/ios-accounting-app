@@ -117,7 +117,10 @@ export function useTransactions(filter?: TransactionFilter) {
   const [loading, setLoading] = useState<boolean>(true);
 
   const reloadTransactions = useCallback(async () => {
-    setLoading(true);
+    // Deliberately silent: loading stays untouched on re-reads. Flipping it
+    // here would tear down the whole content tree (App renders a full-screen
+    // loader while `loading`) and reset scroll position on every background
+    // sync poll. The initial value covers first paint; `finally` clears it.
     try {
       await initializeDatabase();
       const list = await repository.getTransactions(filter);
@@ -199,7 +202,7 @@ export function useAccounts(targetCurrency?: string) {
   const [loading, setLoading] = useState<boolean>(true);
 
   const reloadAccounts = useCallback(async () => {
-    setLoading(true);
+    // Silent re-read, same reasoning as reloadTransactions.
     try {
       await initializeDatabase();
       const accList = await repository.getAccounts();
@@ -271,7 +274,7 @@ export function useCategories(type?: TransactionType) {
   const [loading, setLoading] = useState<boolean>(true);
 
   const reloadCategories = useCallback(async () => {
-    setLoading(true);
+    // Silent re-read, same reasoning as reloadTransactions.
     try {
       await initializeDatabase();
       const list = await repository.getCategories(type);

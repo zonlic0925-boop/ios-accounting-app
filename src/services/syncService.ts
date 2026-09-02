@@ -67,10 +67,10 @@ class SyncService {
   }
 
   /**
-   * Subscribe to completed sync cycles; returns an unsubscribe function.
-   * Fired on every successful cycle — including pulls that change nothing —
-   * so views can also refresh after a no-op manual align. Also fired after
-   * leaveRoom purges local shared rows.
+   * Subscribe to sync cycles that CHANGED local data; returns an unsubscribe
+   * function. Fired only when a cycle pulled/pushed/purged rows — no-op polls
+   * stay silent so views don't re-render every few seconds. Also fired after
+   * leaveRoom purges local shared rows (an explicit data change).
    */
   public onSync(listener: SyncListener): () => void {
     this.listeners.add(listener);
@@ -352,7 +352,12 @@ class SyncService {
         message: "同步成功",
       };
       this.setLastSyncAt(Date.now());
-      this.emit(result);
+      // Wake the UI only when this cycle actually changed local data (pull
+      // add/update/delete or stale purge). Emitting on no-op polls would
+      // re-run refreshAll every few seconds for nothing.
+      if (updatedCount > 0) {
+        this.emit(result);
+      }
       return result;
     } catch (err: any) {
       return { success: false, message: err.message || "同步异常" };
