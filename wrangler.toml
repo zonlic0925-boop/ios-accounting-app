@@ -4,9 +4,18 @@ name = "ios-accounting-app"
 compatibility_date = "2025-01-01"
 pages_build_output_dir = "dist"
 
-# KV storage for couple shared ledger sync.
-# The /api/ledger/* Pages Functions require this binding named SHARED_LEDGER_KV;
+# D1 (SQLite) storage for couple shared ledger sync.
+# The /api/ledger/* Pages Functions require this binding named LEDGER_DB;
 # without it they fall back to per-isolate in-memory storage and data evaporates.
+# Row-level upserts replace the old KV single-key JSON blob (concurrent-write
+# overwrite + 60s eventual consistency + 1,000 writes/day quota).
+[[d1_databases]]
+binding = "LEDGER_DB"
+database_name = "ios-accounting-ledger"
+database_id = "a5ea9ad1-017f-4aba-9977-d03d8440d88f"
+
+# Legacy KV namespace kept ONLY as a historical data source (migration to D1
+# completed 2026-09-02); the functions no longer read or write it.
 [[kv_namespaces]]
 binding = "SHARED_LEDGER_KV"
 id = "9b90cb18aa5d40a790118a89d17357b6"

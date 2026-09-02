@@ -1,115 +1,98 @@
 // Cloudflare Pages Function: /api/ledger/room
-// In-memory / ephemeral KV storage for pair rooms
+// Pair-room create/join backed by Cloudflare D1 (SQLite). Rooms are durable —
+// unlike the old KV entry they no longer expire after a year. The response
+// contract is unchanged from the KV version.
 
 interface Env {
-  SHARED_LEDGER_KV?: any;
+  LEDGER_DB?: any; // D1Database binding from wrangler.toml
 }
 
-// In-memory fallback if KV is not bound
+// Local-dev fallback when D1 is not bound (wrangler pages dev without --d1)
 const memoryRooms = new Map<string, {
   roomId: string;
   createdAt: number;
   name: string;
-  transactions: any[];
 }>();
+
+const jsonResponse = (data: any, status = 200): Response =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
     const body = await context.request.json() as { action: "create" | "join"; roomId?: string; name?: string };
+    const db = context.env?.LEDGER_DB;
 
     if (body.action === "create") {
       // Generate a friendly 6-character room code (e.g. LOVE88, 839210)
       const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-      const newRoom = {
-        roomId: randomCode,
-        createdAt: Date.now(),
-        name: body.name || "恋爱共享账本",
-        transactions: [],
-      };
+      const roomName = body.name || "恋爱共享账本";
 
       try {
-        if (context.env?.SHARED_LEDGER_KV) {
-          await context.env.SHARED_LEDGER_KV.put(`room:${randomCode}`, JSON.stringify(newRoom), {
-            expirationTtl: 60 * 60 * 24 * 365, // 1 year
-          });
+        if (db) {
+          await db.prepare(
+            `INSERT OR IGNORE INTO room (room_id, name, created_at) VALUES (?1, ?2, ?3)`
+          ).bind(randomCode, roomName, Date.now()).run();
         } else {
-          memoryRooms.set(randomCode, newRoom);
+          memoryRooms.set(randomCode, { roomId: randomCode, createdAt: Date.now(), name: roomName });
         }
       } catch {
-        return new Response(JSON.stringify({
+        return jsonResponse({
           success: false,
-          message: "云端暂时无法创建房间（服务忙或今日配额已满），请稍后再试",
-        }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        });
+          message: "云端暂时无法创建房间（服务忙），请稍后再试",
+        }, 500);
       }
 
-      return new Response(JSON.stringify({
+      return jsonResponse({
         success: true,
         roomId: randomCode,
-        roomName: newRoom.name,
+        roomName,
         message: "房间创建成功",
-      }), {
-        headers: { "Content-Type": "application/json" },
       });
     }
 
     if (body.action === "join") {
       const code = (body.roomId || "").trim().toUpperCase();
       if (!code) {
-        return new Response(JSON.stringify({ success: false, message: "请输入有效的配对码" }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        });
+        return jsonResponse({ success: false, message: "请输入有效的配对码" }, 400);
       }
 
-      let roomData = null;
-      if (context.env?.SHARED_LEDGER_KV) {
-        const raw = await context.env.SHARED_LEDGER_KV.get(`room:${code}`);
-        if (raw) roomData = JSON.parse(raw);
-      } else {
-        roomData = memoryRooms.get(code);
-      }
-
-      if (!roomData) {
-        // If room does not exist yet, initialize it gracefully so either partner can join
-        roomData = {
-          roomId: code,
-          createdAt: Date.now(),
-          name: "恋爱共享账本",
-          transactions: [],
-        };
-        try {
-          if (context.env?.SHARED_LEDGER_KV) {
-            await context.env.SHARED_LEDGER_KV.put(`room:${code}`, JSON.stringify(roomData));
-          } else {
-            memoryRooms.set(code, roomData);
+      let roomName: string | null = null;
+      if (db) {
+        const row = await db.prepare(`SELECT name FROM room WHERE room_id = ?1`).bind(code).first<{ name: string }>();
+        roomName = row?.name ?? null;
+        if (!roomName) {
+          // Initialize gracefully so either partner can join a fresh code;
+          // INSERT OR IGNORE keeps this safe if both join simultaneously.
+          try {
+            await db.prepare(
+              `INSERT OR IGNORE INTO room (room_id, name, created_at) VALUES (?1, ?2, ?3)`
+            ).bind(code, "恋爱共享账本", Date.now()).run();
+          } catch {
+            // Join can still succeed; the room row is only metadata.
           }
-        } catch {
-          // Join can still succeed for this session; the room record is only
-          // metadata. A quota-limited KV shouldn't block pairing entirely.
+          roomName = "恋爱共享账本";
+        }
+      } else {
+        roomName = memoryRooms.get(code)?.name ?? null;
+        if (!roomName) {
+          memoryRooms.set(code, { roomId: code, createdAt: Date.now(), name: "恋爱共享账本" });
+          roomName = "恋爱共享账本";
         }
       }
 
-      return new Response(JSON.stringify({
+      return jsonResponse({
         success: true,
         roomId: code,
-        roomName: roomData.name || "恋爱共享账本",
+        roomName: roomName || "恋爱共享账本",
         message: "成功加入共享账本",
-      }), {
-        headers: { "Content-Type": "application/json" },
       });
     }
 
-    return new Response(JSON.stringify({ success: false, message: "未知操作" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ success: false, message: "未知操作" }, 400);
   } catch (err: any) {
-    return new Response(JSON.stringify({ success: false, message: err.message || "服务器错误" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ success: false, message: err.message || "服务器错误" }, 500);
   }
 };

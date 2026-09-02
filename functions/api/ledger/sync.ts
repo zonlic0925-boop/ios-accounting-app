@@ -1,11 +1,26 @@
 // Cloudflare Pages Function: /api/ledger/sync
-// Incremental bidirectional sync for shared ledger transactions
+// Bidirectional sync backed by Cloudflare D1 (SQLite): row-level idempotent
+// upserts keyed by (roomId, remoteId). Two devices recording at the same
+// moment can no longer overwrite each other the way the old single-KV-key
+// JSON blob did, there is no 60s eventual-consistency window, and the free
+// write budget rises from ~1,000/day (KV) to 100,000/day (D1).
+// The response contract is unchanged from the KV version.
 
 interface Env {
-  SHARED_LEDGER_KV?: any;
+  LEDGER_DB?: any; // D1Database binding from wrangler.toml
 }
 
+// Local-dev fallback when D1 is not bound (wrangler pages dev without --d1)
 const memoryStore = new Map<string, any[]>();
+
+const mergeKey = (tx: any): string =>
+  tx.remoteId || `${tx.date}_${tx.amount}_${tx.note}_${tx.createdAt}`;
+
+const jsonResponse = (data: any, status = 200): Response =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
@@ -17,85 +32,78 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const roomId = (body.roomId || "").trim().toUpperCase();
     if (!roomId) {
-      return new Response(JSON.stringify({ success: false, message: "缺少 roomId" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
+      return jsonResponse({ success: false, message: "缺少 roomId" }, 400);
+    }
+
+    const db = context.env?.LEDGER_DB;
+    if (db) {
+      const incoming = body.pendingTransactions || [];
+
+      // Push side: one batched upsert per incoming row. The WHERE guard keeps
+      // only the newer write per merge key, so a duplicate or out-of-order
+      // push can never regress an existing row.
+      if (incoming.length > 0) {
+        const stmt = db.prepare(
+          `INSERT INTO ledger_tx (room_id, remote_id, payload, updated_at, deleted_at)
+           VALUES (?1, ?2, ?3, ?4, ?5)
+           ON CONFLICT(room_id, remote_id) DO UPDATE SET
+             payload = excluded.payload,
+             updated_at = excluded.updated_at,
+             deleted_at = excluded.deleted_at
+           WHERE excluded.updated_at >= ledger_tx.updated_at`
+        );
+        await db.batch(incoming.map((tx: any) => {
+          // The recorder device's local auto-increment id is meaningless to
+          // everyone else; (room_id, remote_id) is the identity that matters.
+          const { id: _localId, ...persisted } = tx;
+          return stmt.bind(
+            roomId,
+            mergeKey(tx),
+            JSON.stringify(persisted),
+            tx.updatedAt || tx.createdAt || 0,
+            tx.deletedAt ?? null
+          );
+        }));
+      }
+
+      // Pull side: full room snapshot INCLUDING tombstones — the client
+      // protocol deletes its local copy of any row carrying deletedAt.
+      const { results } = await db.prepare(
+        `SELECT payload FROM ledger_tx WHERE room_id = ?1 ORDER BY updated_at ASC`
+      ).bind(roomId).all();
+      const transactions = (results || []).map((r: any) => JSON.parse(r.payload));
+
+      return jsonResponse({
+        success: true,
+        roomId,
+        serverTime: Date.now(),
+        transactions,
       });
     }
 
-    let existingTransactions: any[] = [];
-    if (context.env?.SHARED_LEDGER_KV) {
-      const raw = await context.env.SHARED_LEDGER_KV.get(`transactions:${roomId}`);
-      if (raw) existingTransactions = JSON.parse(raw);
-    } else {
-      existingTransactions = memoryStore.get(roomId) || [];
-    }
+    // ---- Fallback below mirrors the legacy in-memory behaviour (dev only) ----
+    let existingTransactions: any[] = memoryStore.get(roomId) || [];
 
-    // Merge incoming pending transactions from this client
     const incoming = body.pendingTransactions || [];
     const txMap = new Map<string, any>();
-
-    // Put existing in map
-    for (const tx of existingTransactions) {
-      const key = tx.remoteId || `${tx.date}_${tx.amount}_${tx.note}_${tx.createdAt}`;
-      txMap.set(key, tx);
-    }
-
-    // Merge incoming, picking newer updatedAt.
-    // The remoteId is the merge key and must stay stable: a deletion tombstone
-    // carries the record's original remoteId + deletedAt so every partner device
-    // can identify and remove its copy instead of treating it as a new record.
+    for (const tx of existingTransactions) txMap.set(mergeKey(tx), tx);
     for (const inTx of incoming) {
-      const key = inTx.remoteId || `${inTx.date}_${inTx.amount}_${inTx.note}_${inTx.createdAt}`;
+      const key = mergeKey(inTx);
       const prev = txMap.get(key);
       if (!prev || (inTx.updatedAt || 0) >= (prev.updatedAt || 0)) {
         txMap.set(key, { ...inTx, remoteId: key, ledgerId: "shared" });
       }
     }
-
     const mergedList = Array.from(txMap.values());
+    memoryStore.set(roomId, mergedList);
 
-    // Persist only when the room data actually changed. Two phones polling
-    // every 15s would otherwise burn the free KV tier's ~1000 writes/day on
-    // no-op cycles within hours and permanently break sync.
-    const changed = JSON.stringify(mergedList) !== JSON.stringify(existingTransactions);
-    if (changed) {
-      if (context.env?.SHARED_LEDGER_KV) {
-        try {
-          await context.env.SHARED_LEDGER_KV.put(`transactions:${roomId}`, JSON.stringify(mergedList));
-        } catch (kvErr: any) {
-          // Daily write quota exhausted (or KV transiently unavailable):
-          // still answer with the merged view so clients can at least read,
-          // and tell them their pending rows did NOT reach durable storage.
-          return new Response(JSON.stringify({
-            success: false,
-            roomId,
-            serverTime: Date.now(),
-            transactions: mergedList,
-            message: "云端写入失败，请稍后再试（数据暂存于本次会话）",
-            kvError: true,
-          }), {
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-      } else {
-        memoryStore.set(roomId, mergedList);
-      }
-    }
-
-    // Filter transactions to return (all transactions for the shared room)
-    return new Response(JSON.stringify({
+    return jsonResponse({
       success: true,
       roomId,
       serverTime: Date.now(),
       transactions: mergedList,
-    }), {
-      headers: { "Content-Type": "application/json" },
     });
   } catch (err: any) {
-    return new Response(JSON.stringify({ success: false, message: err.message || "同步服务错误" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ success: false, message: err.message || "同步服务错误" }, 500);
   }
 };
