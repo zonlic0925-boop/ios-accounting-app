@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { Account } from "../db";
 import { TransferModal } from "./TransferModal";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 import {
   convertAmount,
   formatCurrencyWithCode,
@@ -49,6 +50,10 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   const [isTransferOpen, setIsTransferOpen] = useState(false);
   const [isAddAccountOpen, setIsAddAccountOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+
+  // Android system back closes the inline add/edit modal instead of exiting
+  // (TransferModal handles its own back guard internally)
+  useModalBackClose(isAddAccountOpen, () => setIsAddAccountOpen(false));
 
   // New / Edit Account form state
   const [name, setName] = useState("");

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, ArrowRightLeft } from "lucide-react";
 import type { Account } from "../db";
 import { convertAmount, formatCurrencyWithCode } from "../services/currency";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 import { haptics } from "../lib/haptics";
 
 interface TransferModalProps {
@@ -28,6 +29,8 @@ export const TransferModal: React.FC<TransferModalProps> = ({
   rates,
   onTransfer,
 }) => {
+  // Android system back closes the modal instead of exiting the app
+  useModalBackClose(isOpen, onClose);
   const [fromAccountId, setFromAccountId] = useState<string>(accounts[0]?.id || "");
   const [toAccountId, setToAccountId] = useState<string>(accounts[1]?.id || "");
   const [fromAmountStr, setFromAmountStr] = useState<string>("");

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Globe,
   RefreshCw,
@@ -21,9 +21,11 @@ import {
   Star,
   Coffee,
   Code2,
+  Smartphone,
 } from "lucide-react";
 import { getBaseCurrencyOptions, getCurrencyInfo } from "../services/currency";
 import { syncService } from "../services/syncService";
+import { canPromptInstall, isStandalone, onInstallAvailability, promptInstall } from "../lib/installPrompt";
 import { haptics } from "../lib/haptics";
 
 const AUTHOR_NAME = "Zonlic";
@@ -64,6 +66,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [exportSuccess, setExportSuccess] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showDonate, setShowDonate] = useState(false);
+
+  // PWA install: native prompt availability (Android/Chromium) vs iOS guidance
+  const [canInstall, setCanInstall] = useState(canPromptInstall());
+  const [installDone, setInstallDone] = useState(false);
+  const isIosDevice = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  useEffect(() => onInstallAvailability(() => setCanInstall(canPromptInstall())), []);
+  const handleInstall = async () => {
+    haptics.selection();
+    const outcome = await promptInstall();
+    if (outcome === "accepted") setInstallDone(true);
+  };
 
   // Cloud Sync & Couple Room States
   const [roomId, setRoomId] = useState<string | null>(syncService.getRoomId());
@@ -480,6 +493,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </span>
 
         <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl overflow-hidden shadow-ios-card border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.04] dark:divide-white/[0.04]">
+          {/* Install to Home Screen (Android native prompt / iOS guidance) */}
+          {!isStandalone() && (canInstall || isIosDevice) && (
+            <button
+              type="button"
+              onClick={canInstall ? handleInstall : undefined}
+              className="w-full p-4 flex items-center justify-between hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors text-left cursor-pointer"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 rounded-xl bg-ios-blue/10 text-ios-blue flex items-center justify-center">
+                  <Smartphone className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-black dark:text-white">
+                    安装到手机
+                  </div>
+                  <p className="text-xs text-ios-gray-1">
+                    {canInstall
+                      ? "安装为独立应用，全屏使用、离线可开"
+                      : "iPhone：Safari 底部分享按钮 → 添加到主屏幕"}
+                  </p>
+                </div>
+              </div>
+              {canInstall && (
+                <span className="text-xs font-semibold text-ios-blue">
+                  {installDone ? "已完成" : "安装"}
+                </span>
+              )}
+            </button>
+          )}
+
           {/* Theme Selector */}
           <div className="p-4 flex items-center justify-between">
             <div className="flex items-center space-x-3">
@@ -527,7 +570,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   按键音效与振动反馈
                 </div>
                 <p className="text-xs text-ios-gray-1">
-                  模拟 iOS Taptic Engine 震感与敲击按键音
+                  拟原生 Taptic 触感反馈与敲击按键音
                 </p>
               </div>
             </div>

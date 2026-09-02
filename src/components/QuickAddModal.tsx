@@ -15,6 +15,7 @@ import type { Account, Category, LedgerId } from "../db";
 import { IOSKeypad } from "./IOSKeypad";
 import { CategoryIcon } from "./CategoryIcon";
 import { convertAmount, formatCurrencyWithCode, getAllCurrencies } from "../services/currency";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 import { haptics } from "../lib/haptics";
 
 interface QuickAddModalProps {
@@ -62,6 +63,9 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   const [note, setNote] = useState<string>("");
   const [showCurrencyPicker, setShowCurrencyPicker] = useState<boolean>(false);
   const [showAccountPicker, setShowAccountPicker] = useState<boolean>(false);
+
+  // Android system back closes the modal instead of exiting the app
+  useModalBackClose(isOpen, onClose);
 
   // Filter categories by type
   const filteredCategories = categories.filter((c) => c.type === type);

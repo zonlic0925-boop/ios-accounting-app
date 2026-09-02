@@ -1,11 +1,11 @@
 {
-  "name": "极简记账 - iOS 多币种记账",
+  "name": "极简记账 - 多币种记账",
   "short_name": "极简记账",
-  "description": "iOS 质感优先的多币种实时换算极速记账应用",
+  "description": "多币种实时换算的极简记账应用，支持情侣共享账本",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",
-  "theme_color": "#007AFF",
+  "theme_color": "#F2F2F7",
   "icons": [
     {
       "src": "/icon-192.png",
